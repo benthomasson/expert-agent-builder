@@ -1,0 +1,48 @@
+# CLAUDE.md
+
+## Domain
+
+This is an expert agent for **{{DOMAIN}}**.
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `entries/` | Chronological documentation entries |
+| `beliefs.md` | Belief registry (claims with source tracking) |
+| `nogoods.md` | Tracked contradictions between beliefs |
+| `expert-build.md` | Build pipeline config and progress |
+| `sources/` | Raw fetched documentation |
+
+## Workflow
+
+1. Write entries as you learn things (`entry create topic "Title"`)
+2. Distill beliefs from entries (`beliefs add --id ... --text ... --source ...`)
+3. Track contradictions as nogoods (`beliefs add-nogood --description ...`)
+4. Sync the database (`shared-enterprise sync`)
+5. Query knowledge (`shared-enterprise context "topic"`)
+
+## Tools
+
+```bash
+# Entry management
+entry create topic-name "Entry Title"
+
+# Belief management
+beliefs add --id claim-id --text "What I learned" --source repo:path
+beliefs check-stale
+
+# Knowledge retrieval
+shared-enterprise sync
+shared-enterprise context "query"
+shared-enterprise search "terms"
+shared-enterprise claims gaps
+
+# Expert build pipeline
+expert-build status
+expert-build fetch-docs <url>
+expert-build summarize
+expert-build propose-beliefs
+expert-build cert-coverage objectives/file.md
+expert-build exam questions/file.md
+```
