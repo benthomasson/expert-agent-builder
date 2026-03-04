@@ -71,7 +71,15 @@ Run practice questions through LLM with belief context, discover nogoods.
 ```bash
 expert-build exam questions/ex200-practice.md
 expert-build exam questions/ex200-practice.md --limit 20
+expert-build exam questions/ex200-practice.md --output results.md
+expert-build exam questions/ex200-practice.md -o results/exam-2026-03-04.md --model gemini
 ```
+Options:
+- `--output, -o` — Save results to markdown file (per-question detail, model responses, by-objective breakdown)
+- `--model` — Model to use (default: claude)
+- `--beliefs-file` — Path to beliefs.md (default: beliefs.md)
+- `--limit` — Max questions to process
+
 Wrong answers are recorded as nogoods via `beliefs add-nogood`.
 
 ### status
