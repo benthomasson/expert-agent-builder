@@ -72,6 +72,8 @@ def main():
     exam_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
     exam_p.add_argument("--beliefs-file", type=Path, default=Path("beliefs.md"))
     exam_p.add_argument("--limit", type=int, help="Max questions to process")
+    exam_p.add_argument("--output", "-o", type=Path, default=None,
+                        help="Save results to file (markdown)")
 
     # -- status --
     sub.add_parser("status", help="Show pipeline progress")

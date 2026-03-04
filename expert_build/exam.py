@@ -150,6 +150,7 @@ def cmd_exam(args):
 
     correct = 0
     wrong = []
+    results = []  # Per-question results for output file
 
     for q in questions:
         # Format choices
@@ -167,6 +168,7 @@ def cmd_exam(args):
             response = invoke_sync(prompt, model=args.model, timeout=120)
         except Exception as e:
             print(f"  {q['id']}: ERROR - {e}")
+            results.append({"question": q, "status": "ERROR", "error": str(e)})
             continue
 
         answer = extract_answer(response)
@@ -181,6 +183,7 @@ def cmd_exam(args):
         if is_correct:
             correct += 1
             print(f"  {q['id']}: CORRECT")
+            results.append({"question": q, "status": "CORRECT", "got": answer, "response": response})
         else:
             wrong.append({
                 "question": q,
@@ -188,6 +191,7 @@ def cmd_exam(args):
                 "expected": q["correct"],
                 "response": response,
             })
+            results.append({"question": q, "status": "WRONG", "got": answer, "expected": q["correct"], "response": response})
             print(f"  {q['id']}: WRONG (expected: {q['correct']}, got: {answer})")
 
     # Summary
@@ -195,6 +199,19 @@ def cmd_exam(args):
     pct = 100 * correct // total if total else 0
     print(f"\n=== Results ===")
     print(f"Score: {correct}/{total} ({pct}%)")
+
+    # Gaps by objective
+    obj_scores: dict[str, dict] = {}
+    for q in questions:
+        obj = q.get("objective", "general")
+        if obj not in obj_scores:
+            obj_scores[obj] = {"correct": 0, "total": 0}
+        obj_scores[obj]["total"] += 1
+
+    for q in questions:
+        obj = q.get("objective", "general")
+        if not any(w["question"]["id"] == q["id"] for w in wrong):
+            obj_scores[obj]["correct"] += 1
 
     if wrong:
         print(f"\nWRONG ANSWERS ({len(wrong)}):\n")
@@ -220,25 +237,78 @@ def cmd_exam(args):
             except FileNotFoundError:
                 print(f"    -> WARN: beliefs CLI not found, nogood not recorded")
 
-        # Gaps by objective
-        obj_scores: dict[str, dict] = {}
-        for q in questions:
-            obj = q.get("objective", "general")
-            if obj not in obj_scores:
-                obj_scores[obj] = {"correct": 0, "total": 0}
-            obj_scores[obj]["total"] += 1
-
-        for w in wrong:
-            obj = w["question"].get("objective", "general")
-            # Don't increment correct for wrong answers
-
-        for q in questions:
-            obj = q.get("objective", "general")
-            if not any(w["question"]["id"] == q["id"] for w in wrong):
-                obj_scores[obj]["correct"] += 1
-
         print(f"\nBY OBJECTIVE:")
         for obj, scores in sorted(obj_scores.items(), key=lambda x: x[1]["correct"] / max(x[1]["total"], 1)):
             pct = 100 * scores["correct"] // scores["total"] if scores["total"] else 0
             weak = " *** WEAK AREA" if pct < 50 else ""
             print(f"  {obj}: {scores['correct']}/{scores['total']} ({pct}%){weak}")
+
+    # Write output file if requested
+    output_path = getattr(args, "output", None)
+    if output_path:
+        _write_results(output_path, q_path, args.model, questions, results, wrong, obj_scores, correct, total)
+        print(f"\nResults saved to {output_path}")
+
+
+def _write_results(
+    output_path: Path,
+    q_path: Path,
+    model: str,
+    questions: list[dict],
+    results: list[dict],
+    wrong: list[dict],
+    obj_scores: dict[str, dict],
+    correct: int,
+    total: int,
+) -> None:
+    """Write exam results to a markdown file."""
+    from datetime import datetime
+
+    pct = 100 * correct // total if total else 0
+    lines = [
+        f"# Exam Results: {q_path.name}",
+        "",
+        f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"**Model:** {model}",
+        f"**Score:** {correct}/{total} ({pct}%)",
+        "",
+        "## Per-Question Results",
+        "",
+    ]
+
+    for r in results:
+        q = r["question"]
+        status = r["status"]
+        if status == "CORRECT":
+            lines.append(f"- **{q['id']}**: CORRECT — {q['text']}")
+        elif status == "WRONG":
+            lines.append(f"- **{q['id']}**: WRONG — {q['text']}")
+            lines.append(f"  - Expected: {r['expected']}")
+            lines.append(f"  - Got: {r['got']}")
+        else:
+            lines.append(f"- **{q['id']}**: ERROR — {q['text']}")
+            lines.append(f"  - {r.get('error', 'unknown error')}")
+
+    if wrong:
+        lines.extend(["", "## Wrong Answers (Detail)", ""])
+        for w in wrong:
+            q = w["question"]
+            lines.append(f"### {q['id']}: {q['text']}")
+            if q["choices"]:
+                for k, v in sorted(q["choices"].items()):
+                    marker = " **<--**" if k == q["correct"].strip().lower() else ""
+                    lines.append(f"- {k}) {v}{marker}")
+            lines.append(f"- **Expected:** {w['expected']}")
+            lines.append(f"- **Got:** {w['got']}")
+            if q["objective"]:
+                lines.append(f"- **Objective:** {q['objective']}")
+            lines.extend(["", "**Model response:**", "", "```", w["response"].strip(), "```", ""])
+
+    lines.extend(["", "## By Objective", ""])
+    for obj, scores in sorted(obj_scores.items(), key=lambda x: x[1]["correct"] / max(x[1]["total"], 1)):
+        obj_pct = 100 * scores["correct"] // scores["total"] if scores["total"] else 0
+        weak = " **WEAK AREA**" if obj_pct < 50 else ""
+        lines.append(f"- **{obj}**: {scores['correct']}/{scores['total']} ({obj_pct}%){weak}")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n")
