@@ -252,6 +252,8 @@ def _build_dedup_context(
 
 def cmd_propose_beliefs(args):
     """Extract candidate beliefs from entries for human review."""
+    from .caffeinate import hold as _caffeinate
+    _caffeinate()
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
         print(f"Entries directory not found: {input_dir}")

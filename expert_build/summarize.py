@@ -11,6 +11,8 @@ from .prompts import SUMMARIZE
 
 def cmd_summarize(args):
     """Generate entries from source documents."""
+    from .caffeinate import hold as _caffeinate
+    _caffeinate()
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
         print(f"Source directory not found: {input_dir}")

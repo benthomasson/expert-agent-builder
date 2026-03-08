@@ -174,6 +174,8 @@ def fetch_sitemap(url: str, client: httpx.Client) -> list[str]:
 
 def cmd_fetch_docs(args):
     """Fetch documentation from URLs and save as markdown."""
+    from .caffeinate import hold as _caffeinate
+    _caffeinate()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     base_domain = urlparse(args.url).netloc
