@@ -54,6 +54,10 @@ def main():
     prop_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
     prop_p.add_argument("--batch-size", type=int, default=5,
                         help="Entries per LLM batch (default: 5)")
+    prop_p.add_argument("--entry", action="append",
+                        help="Process specific entry file(s) instead of all entries")
+    prop_p.add_argument("--all", action="store_true",
+                        help="Re-process all entries (ignore processed tracking)")
 
     # -- accept-beliefs --
     accept_p = sub.add_parser("accept-beliefs", help="Import accepted beliefs from proposals")
