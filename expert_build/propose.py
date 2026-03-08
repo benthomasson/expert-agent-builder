@@ -374,24 +374,35 @@ def cmd_propose_beliefs(args):
     # Record processed entries
     _save_processed(processed_path, entries, processed)
 
-    # Write proposals file
+    # Write proposals file (append if it already exists)
     source_desc = (", ".join(str(e) for e in entries)
                    if has_entry_flag
                    else f"{len(entries)} entries from {input_dir}/")
     output = Path(args.output)
-    with output.open("w") as f:
-        f.write("# Proposed Beliefs\n\n")
-        f.write(f"**Generated:** {date.today().isoformat()}\n")
-        f.write(f"**Source:** {source_desc}\n")
-        f.write(f"**Model:** {args.model}\n\n")
-        f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
-        f.write("Then run: `expert-build accept-beliefs`\n\n")
-        f.write("---\n\n")
-        for proposal in filtered_proposals:
-            f.write(proposal)
-            f.write("\n\n")
+    if output.exists() and output.stat().st_size > 0:
+        with output.open("a") as f:
+            f.write(f"\n---\n\n")
+            f.write(f"**Generated:** {date.today().isoformat()}\n")
+            f.write(f"**Source:** {source_desc}\n")
+            f.write(f"**Model:** {args.model}\n\n")
+            for proposal in filtered_proposals:
+                f.write(proposal)
+                f.write("\n\n")
+        print(f"\nAppended to {output}")
+    else:
+        with output.open("w") as f:
+            f.write("# Proposed Beliefs\n\n")
+            f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
+            f.write("Then run: `expert-build accept-beliefs`\n\n")
+            f.write("---\n\n")
+            f.write(f"**Generated:** {date.today().isoformat()}\n")
+            f.write(f"**Source:** {source_desc}\n")
+            f.write(f"**Model:** {args.model}\n\n")
+            for proposal in filtered_proposals:
+                f.write(proposal)
+                f.write("\n\n")
+        print(f"\nWrote {output}")
 
-    print(f"\nWrote {output}")
     print("Review the file, mark entries as [ACCEPT] or [REJECT], then run:")
     print("  expert-build accept-beliefs")
 
