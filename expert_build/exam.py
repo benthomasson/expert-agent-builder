@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .llm import check_model_available, invoke_sync
-from .prompts import EXAM_ANSWER
+from .prompts import EXAM_ANSWER, EXAM_JUDGE
 
 
 def parse_questions(filepath: Path) -> list[dict]:
@@ -122,6 +122,26 @@ def extract_answer(response: str) -> str:
     return response.strip()[:100]
 
 
+def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bool, str]:
+    """Use LLM to judge if an open-ended answer is semantically correct."""
+    prompt = EXAM_JUDGE.format(question=question, expected=expected, got=got)
+    try:
+        response = invoke_sync(prompt, model=model, timeout=60)
+    except Exception:
+        return False, "judge error"
+
+    verdict_match = re.search(r"VERDICT:\s*(CORRECT|WRONG)", response, re.IGNORECASE)
+    if not verdict_match:
+        return False, "no verdict"
+
+    is_correct = verdict_match.group(1).upper() == "CORRECT"
+    explanation = ""
+    exp_match = re.search(r"EXPLANATION:\s*(.+)", response, re.IGNORECASE)
+    if exp_match:
+        explanation = exp_match.group(1).strip()
+    return is_correct, explanation
+
+
 def cmd_exam(args):
     """Run practice questions through LLM, discover nogoods."""
     q_path = Path(args.questions_file)
@@ -173,26 +193,36 @@ def cmd_exam(args):
 
         answer = extract_answer(response)
         expected = q["correct"].strip().lower()
+        use_judge = not getattr(args, 'no_judge', False)
 
-        # Normalize for comparison
-        if len(expected) == 1:
+        # Score: MC uses exact match, open-ended uses LLM judge
+        if q["choices"] or len(expected) == 1:
             is_correct = answer.lower() == expected
+            judge_note = ""
+        elif use_judge:
+            is_correct, judge_note = judge_answer(
+                q["text"], q["correct"], response, args.model,
+            )
         else:
             is_correct = expected in answer.lower() or answer.lower() in expected
+            judge_note = ""
 
         if is_correct:
             correct += 1
             print(f"  {q['id']}: CORRECT")
-            results.append({"question": q, "status": "CORRECT", "got": answer, "response": response})
+            results.append({"question": q, "status": "CORRECT", "got": answer, "response": response, "judge": judge_note})
         else:
             wrong.append({
                 "question": q,
                 "got": answer,
                 "expected": q["correct"],
                 "response": response,
+                "judge": judge_note,
             })
-            results.append({"question": q, "status": "WRONG", "got": answer, "expected": q["correct"], "response": response})
+            results.append({"question": q, "status": "WRONG", "got": answer, "expected": q["correct"], "response": response, "judge": judge_note})
             print(f"  {q['id']}: WRONG (expected: {q['correct']}, got: {answer})")
+            if judge_note:
+                print(f"    Judge: {judge_note}")
 
     # Summary
     total = len(questions)

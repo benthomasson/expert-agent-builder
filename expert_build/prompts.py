@@ -68,6 +68,27 @@ ANSWER: <letter or text>
 EXPLANATION: <one paragraph>
 """
 
+EXAM_JUDGE = """\
+You are grading an exam answer. Determine if the student's answer is \
+semantically correct — it does not need to match the expected answer word \
+for word, but it must convey the same key facts and reasoning.
+
+Question: {question}
+
+Expected answer: {expected}
+
+Student's answer: {got}
+
+Evaluate whether the student's answer captures the essential meaning of the \
+expected answer. Minor differences in wording, additional correct detail, or \
+different but valid approaches should count as correct. Missing key facts or \
+fundamentally wrong reasoning should count as wrong.
+
+Format your response as:
+VERDICT: CORRECT or WRONG
+EXPLANATION: <one sentence>
+"""
+
 CERT_MATCH = """\
 Given a certification objective and a list of beliefs, determine which beliefs \
 (if any) cover this objective. Return the belief IDs that match, one per line. \

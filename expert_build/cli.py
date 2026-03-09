@@ -78,6 +78,8 @@ def main():
     exam_p.add_argument("--limit", type=int, help="Max questions to process")
     exam_p.add_argument("--output", "-o", type=Path, default=None,
                         help="Save results to file (markdown)")
+    exam_p.add_argument("--no-judge", action="store_true",
+                        help="Disable LLM judge for open-ended questions (use string matching)")
 
     # -- status --
     sub.add_parser("status", help="Show pipeline progress")
