@@ -67,14 +67,14 @@ def main():
     # -- cert-coverage --
     cert_p = sub.add_parser("cert-coverage", help="Map cert objectives to beliefs")
     cert_p.add_argument("objectives_file", help="Path to certification objectives")
-    cert_p.add_argument("--beliefs-file", type=Path, default=Path("beliefs.md"))
+    cert_p.add_argument("--beliefs-file", type=Path, default=Path("reasons.db"))
     cert_p.add_argument("--model", default=None, help="Use LLM for semantic matching")
 
     # -- exam --
     exam_p = sub.add_parser("exam", help="Run practice questions, discover gaps")
     exam_p.add_argument("questions_file", help="Path to practice questions")
     exam_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
-    exam_p.add_argument("--beliefs-file", type=Path, default=Path("beliefs.md"))
+    exam_p.add_argument("--beliefs-file", type=Path, default=Path("reasons.db"))
     exam_p.add_argument("--limit", type=int, help="Max questions to process")
     exam_p.add_argument("--output", "-o", type=Path, default=None,
                         help="Save results to file (markdown)")

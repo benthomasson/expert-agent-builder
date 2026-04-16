@@ -4,8 +4,12 @@ import re
 import sys
 from pathlib import Path
 
+from reasons_lib.api import list_nodes
+
 from .llm import check_model_available, invoke_sync
 from .prompts import CERT_MATCH
+
+REASONS_DB = "reasons.db"
 
 
 def parse_objectives(filepath: Path) -> list[dict]:
@@ -39,23 +43,10 @@ def parse_objectives(filepath: Path) -> list[dict]:
     return objectives
 
 
-def parse_beliefs(filepath: Path) -> list[dict]:
-    """Parse beliefs from beliefs.md."""
-    text = filepath.read_text()
-    beliefs = []
-
-    pattern = re.compile(
-        r"### (\S+) \[(\w+)\]\n(.+?)(?:\n|$)"
-    )
-    for match in pattern.finditer(text):
-        belief_id, status, claim_text = match.groups()
-        if status == "IN":
-            beliefs.append({
-                "id": belief_id,
-                "text": claim_text.strip(),
-            })
-
-    return beliefs
+def load_beliefs(db_path: str = REASONS_DB) -> list[dict]:
+    """Load IN beliefs from the reasons database."""
+    result = list_nodes(status="IN", db_path=db_path)
+    return [{"id": n["id"], "text": n["text"]} for n in result["nodes"]]
 
 
 def keyword_match(objective_text: str, belief_text: str) -> float:
@@ -89,13 +80,13 @@ def cmd_cert_coverage(args):
         print(f"Objectives file not found: {obj_path}")
         sys.exit(1)
 
-    beliefs_path = Path(args.beliefs_file)
-    if not beliefs_path.exists():
-        print(f"Beliefs file not found: {beliefs_path}")
+    db_path = str(args.beliefs_file)
+    if not Path(db_path).exists():
+        print(f"Reasons database not found: {db_path}")
         sys.exit(1)
 
     objectives = parse_objectives(obj_path)
-    beliefs = parse_beliefs(beliefs_path)
+    beliefs = load_beliefs(db_path=db_path)
 
     if not objectives:
         print(f"No objectives found in {obj_path}")

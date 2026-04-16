@@ -1,12 +1,15 @@
 """Practice exam runner for nogood discovery."""
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
+from reasons_lib.api import add_node, add_nogood, list_nodes
+
 from .llm import check_model_available, invoke_sync
 from .prompts import EXAM_ANSWER, EXAM_JUDGE
+
+REASONS_DB = "reasons.db"
 
 
 def parse_questions(filepath: Path) -> list[dict]:
@@ -82,17 +85,16 @@ def parse_questions(filepath: Path) -> list[dict]:
     return questions
 
 
-def parse_beliefs_for_context(filepath: Path) -> str:
-    """Read beliefs.md and format as context string."""
-    if not filepath.exists():
-        return "(No beliefs file found)"
+def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
+    """Load IN beliefs from reasons database and format as context string."""
+    if not Path(db_path).exists():
+        return "(No reasons database found)"
 
-    text = filepath.read_text()
-    beliefs = []
-    pattern = re.compile(r"### (\S+) \[IN\]\n(.+?)(?:\n|$)")
-    for match in pattern.finditer(text):
-        belief_id, claim = match.groups()
-        beliefs.append(f"- {belief_id}: {claim.strip()}")
+    try:
+        result = list_nodes(status="IN", db_path=db_path)
+        beliefs = [f"- {n['id']}: {n['text']}" for n in result["nodes"]]
+    except Exception:
+        return "(Error reading reasons database)"
 
     if not beliefs:
         return "(No IN beliefs found)"
@@ -162,7 +164,8 @@ def cmd_exam(args):
     if args.limit:
         questions = questions[:args.limit]
 
-    beliefs_context = parse_beliefs_for_context(Path(args.beliefs_file))
+    db_path = str(args.beliefs_file)
+    beliefs_context = load_beliefs_for_context(db_path=db_path)
 
     print(f"=== Exam: {q_path.name} ===")
     print(f"Questions: {len(questions)}")
@@ -253,19 +256,20 @@ def cmd_exam(args):
             if q["objective"]:
                 print(f"    Objective: {q['objective']}")
 
-            # Record as nogood
+            # Record exam failure as a node for tracking
+            nogood_id = f"exam-fail-{q['id'].lower()}"
             description = f"Exam {q['id']}: expected '{w['expected']}' but agent answered '{w['got']}' for: {q['text']}"
             resolution = f"Review and update beliefs about: {q['objective'] or q['text']}"
             try:
-                subprocess.run(
-                    ["beliefs", "add-nogood",
-                     "--description", description,
-                     "--resolution", resolution],
-                    capture_output=True, text=True,
+                add_node(
+                    node_id=nogood_id,
+                    text=f"{description} — {resolution}",
+                    source=str(q_path),
+                    db_path=db_path,
                 )
                 print(f"    -> Recorded as nogood")
-            except FileNotFoundError:
-                print(f"    -> WARN: beliefs CLI not found, nogood not recorded")
+            except Exception:
+                print(f"    -> WARN: could not record nogood")
 
         print(f"\nBY OBJECTIVE:")
         for obj, scores in sorted(obj_scores.items(), key=lambda x: x[1]["correct"] / max(x[1]["total"], 1)):

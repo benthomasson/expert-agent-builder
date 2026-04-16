@@ -6,6 +6,10 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from reasons_lib.api import init_db, get_status as reasons_status
+
+REASONS_DB = "reasons.db"
+
 
 def cmd_init(args):
     """Bootstrap a new expert agent repo."""
@@ -14,13 +18,8 @@ def cmd_init(args):
     cwd = Path.cwd()
 
     # Check prerequisites
-    missing = []
-    for tool in ["git", "beliefs", "shared-enterprise"]:
-        if not shutil.which(tool):
-            missing.append(tool)
-    if missing:
-        print(f"Error: required tools not found: {', '.join(missing)}")
-        print("Install with: uv tool install <tool>")
+    if not shutil.which("git"):
+        print("Error: git not found")
         sys.exit(1)
 
     # git init
@@ -32,17 +31,12 @@ def cmd_init(args):
     for d in ["entries", "sources", "objectives", "questions"]:
         (cwd / d).mkdir(exist_ok=True)
 
-    # beliefs init
-    if not (cwd / "beliefs.md").exists():
-        subprocess.run(["beliefs", "init"], check=True)
+    # reasons init
+    if not (cwd / REASONS_DB).exists():
+        init_db(db_path=REASONS_DB)
+        print("Initialized reasons database")
     else:
-        print("beliefs.md already exists, skipping beliefs init")
-
-    # shared-enterprise init
-    if not (cwd / "shared.db").exists():
-        subprocess.run(["shared-enterprise", "init"], check=True)
-    else:
-        print("shared.db already exists, skipping shared-enterprise init")
+        print(f"{REASONS_DB} already exists, skipping reasons init")
 
     # Generate CLAUDE.md from template
     claude_md = cwd / "CLAUDE.md"
@@ -103,21 +97,19 @@ def cmd_status(args):
     if entries_dir.exists():
         entry_count = len(list(entries_dir.rglob("*.md")))
 
-    # Count beliefs
+    # Count beliefs and nogoods from reasons database
     belief_count = 0
     nogood_count = 0
-    beliefs_file = cwd / "beliefs.md"
-    if beliefs_file.exists():
-        text = beliefs_file.read_text()
-        import re
-        belief_count = len(re.findall(r"^### \S+ \[IN\]", text, re.MULTILINE))
-
-    # Count nogoods
-    nogoods_file = cwd / "nogoods.md"
-    if nogoods_file.exists():
-        text = nogoods_file.read_text()
-        import re
-        nogood_count = len(re.findall(r"^### nogood-\d+", text, re.MULTILINE))
+    reasons_db = cwd / REASONS_DB
+    if reasons_db.exists():
+        try:
+            from reasons_lib.api import export_network
+            status = reasons_status(db_path=REASONS_DB)
+            belief_count = status["in_count"]
+            network = export_network(db_path=REASONS_DB)
+            nogood_count = len(network.get("nogoods", []))
+        except Exception:
+            pass
 
     # Count proposed beliefs
     proposed_file = cwd / "proposed-beliefs.md"

@@ -25,7 +25,7 @@ Bootstrap a new expert agent repo.
 ```bash
 expert-build init rhcsa --domain "Red Hat Certified System Administrator"
 ```
-Creates: CLAUDE.md, expert-build.md, entries/, sources/, beliefs.md, shared.db
+Creates: CLAUDE.md, expert-build.md, entries/, sources/, reasons.db
 
 ### fetch-docs
 Fetch documentation from URLs, convert to markdown.
@@ -56,7 +56,7 @@ Import accepted beliefs from the proposals file.
 ```bash
 expert-build accept-beliefs
 ```
-Reads `proposed-beliefs.md`, runs `beliefs add` for each `[ACCEPT]` entry.
+Reads `proposed-beliefs.md`, adds each `[ACCEPT]` entry to the reasons database.
 
 ### cert-coverage
 Map certification objectives to beliefs, report coverage gaps.
@@ -77,10 +77,10 @@ expert-build exam questions/ex200-practice.md -o results/exam-2026-03-04.md --mo
 Options:
 - `--output, -o` — Save results to markdown file (per-question detail, model responses, by-objective breakdown)
 - `--model` — Model to use (default: claude)
-- `--beliefs-file` — Path to beliefs.md (default: beliefs.md)
+- `--beliefs-file` — Path to reasons database (default: reasons.db)
 - `--limit` — Max questions to process
 
-Wrong answers are recorded as nogoods via `beliefs add-nogood`.
+Wrong answers are recorded as nodes in the reasons database.
 
 ### status
 Show pipeline progress.

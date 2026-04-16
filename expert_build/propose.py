@@ -3,15 +3,17 @@
 import hashlib
 import json
 import re
-import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+
+from reasons_lib.api import add_node, list_nodes
 
 from .llm import check_model_available, invoke_sync
 from .prompts import PROPOSE_BELIEFS
 
 PROJECT_DIR = ".expert-build"
+REASONS_DB = "reasons.db"
 
 
 def _has_embeddings() -> bool:
@@ -36,25 +38,23 @@ def _get_embed_model():
     return _embed_model
 
 
-def _load_existing_beliefs(beliefs_path: Path) -> list[dict]:
-    """Parse beliefs.md into list of {id, text, source} dicts."""
-    if not beliefs_path.exists():
+def _load_existing_beliefs(db_path: str = REASONS_DB) -> list[dict]:
+    """Load existing beliefs from the reasons database."""
+    if not Path(db_path).exists():
         return []
-    text = beliefs_path.read_text()
-    beliefs = []
-    sections = re.split(r'^(?=### )', text, flags=re.MULTILINE)
-    for section in sections:
-        m = re.match(r'^### ([\w-]+) \[(IN|OUT|STALE)\]', section)
-        if not m:
-            continue
-        lines = section.strip().splitlines()
-        claim_text = lines[1].strip() if len(lines) > 1 else ""
-        source = ""
-        for line in lines:
-            if line.startswith("- Source:"):
-                source = line.replace("- Source:", "").strip()
-        beliefs.append({"id": m.group(1), "text": claim_text, "source": source})
-    return beliefs
+    try:
+        from reasons_lib.api import export_network
+        network = export_network(db_path=db_path)
+        beliefs = []
+        for nid, ndata in network.get("nodes", {}).items():
+            beliefs.append({
+                "id": nid,
+                "text": ndata.get("text", ""),
+                "source": ndata.get("source", ""),
+            })
+        return beliefs
+    except Exception:
+        return []
 
 
 def _load_processed(path: Path) -> dict[str, str]:
@@ -290,7 +290,7 @@ def cmd_propose_beliefs(args):
             return
 
     # Load existing beliefs for dedup context
-    existing_beliefs = _load_existing_beliefs(Path("beliefs.md"))
+    existing_beliefs = _load_existing_beliefs()
     existing_ids = {b["id"] for b in existing_beliefs}
 
     if existing_ids:
@@ -409,43 +409,6 @@ def cmd_propose_beliefs(args):
     print("  expert-build accept-beliefs")
 
 
-def _accept_batch(matches: list[tuple[str, str, str]]) -> bool:
-    """Try to add all beliefs in one subprocess via 'beliefs add-batch'.
-
-    Returns True if batch mode succeeded, False to fall back to per-belief.
-    """
-    lines = []
-    for belief_id, claim_text, source in matches:
-        lines.append(json.dumps({
-            "id": belief_id,
-            "text": claim_text.strip(),
-            "source": source.strip(),
-        }))
-    json_input = "\n".join(lines)
-
-    try:
-        result = subprocess.run(
-            ["beliefs", "add-batch"],
-            input=json_input,
-            capture_output=True, text=True,
-        )
-    except FileNotFoundError:
-        print("ERROR: beliefs CLI not found. Install with: uv tool install beliefs")
-        sys.exit(1)
-
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        if "invalid choice" in stderr or "unrecognized arguments" in stderr:
-            return False
-        print(f"Batch failed: {stderr}")
-        return False
-
-    if result.stdout.strip():
-        print(result.stdout.strip())
-
-    return True
-
-
 def cmd_accept_beliefs(args):
     """Import accepted beliefs from proposals file."""
     proposals_file = Path(args.file)
@@ -471,37 +434,24 @@ def cmd_accept_beliefs(args):
 
     print(f"Found {len(matches)} accepted beliefs")
 
-    # Try batch mode first (single subprocess, single parse of beliefs.md)
-    if _accept_batch(matches):
-        return
-
-    # Fall back to per-belief add
-    print("Falling back to per-belief add...")
     added = 0
     failed = 0
     for belief_id, claim_text, source in matches:
         try:
-            result = subprocess.run(
-                ["beliefs", "add",
-                 "--id", belief_id,
-                 "--text", claim_text.strip(),
-                 "--source", source.strip()],
-                capture_output=True, text=True,
+            add_node(
+                node_id=belief_id,
+                text=claim_text.strip(),
+                source=source.strip(),
+                db_path=REASONS_DB,
             )
-            if result.returncode == 0:
-                print(f"  Added: {belief_id}")
-                added += 1
+            print(f"  Added: {belief_id}")
+            added += 1
+        except Exception as e:
+            err = str(e)
+            if "already exists" in err.lower() or "duplicate" in err.lower():
+                print(f"  EXISTS: {belief_id}")
             else:
-                stderr = result.stderr.strip()
-                if "already exists" in stderr or "already exists" in result.stdout:
-                    print(f"  EXISTS: {belief_id}")
-                else:
-                    print(f"  FAIL: {belief_id}: {stderr or result.stdout.strip()}")
-                    failed += 1
-        except FileNotFoundError:
-            print("ERROR: beliefs CLI not found. Install with: uv tool install beliefs")
-            sys.exit(1)
+                print(f"  FAIL: {belief_id}: {err}")
+                failed += 1
 
     print(f"\nAccepted {added} beliefs ({failed} failed)")
-    if added:
-        print("Run: shared-enterprise sync")

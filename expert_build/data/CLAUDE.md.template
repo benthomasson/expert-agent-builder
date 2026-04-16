@@ -9,18 +9,17 @@ This is an expert agent for **{{DOMAIN}}**.
 | File | Purpose |
 |------|---------|
 | `entries/` | Chronological documentation entries |
-| `beliefs.md` | Belief registry (claims with source tracking) |
-| `nogoods.md` | Tracked contradictions between beliefs |
+| `reasons.db` | Reason maintenance database (beliefs with dependency tracking) |
 | `expert-build.md` | Build pipeline config and progress |
 | `sources/` | Raw fetched documentation |
 
 ## Workflow
 
 1. Write entries as you learn things (`entry create topic "Title"`)
-2. Distill beliefs from entries (`beliefs add --id ... --text ... --source ...`)
-3. Track contradictions as nogoods (`beliefs add-nogood --description ...`)
-4. Sync the database (`shared-enterprise sync`)
-5. Query knowledge (`shared-enterprise context "topic"`)
+2. Distill beliefs from entries (`reasons add claim-id "What I learned" --source repo:path`)
+3. Track contradictions (`reasons nogood claim-a claim-b`)
+4. Challenge and defend beliefs (`reasons challenge claim-id "reason"`)
+5. Search knowledge (`reasons search "query"`)
 
 ## Tools
 
@@ -28,15 +27,15 @@ This is an expert agent for **{{DOMAIN}}**.
 # Entry management
 entry create topic-name "Entry Title"
 
-# Belief management
-beliefs add --id claim-id --text "What I learned" --source repo:path
-beliefs check-stale
-
-# Knowledge retrieval
-shared-enterprise sync
-shared-enterprise context "query"
-shared-enterprise search "terms"
-shared-enterprise claims gaps
+# Reason maintenance
+reasons add claim-id "What I learned" --source repo:path
+reasons retract claim-id --reason "why"
+reasons challenge claim-id "reason for doubt"
+reasons defend claim-id challenge-id "defense"
+reasons explain claim-id
+reasons search "query"
+reasons check-stale
+reasons status
 
 # Expert build pipeline
 expert-build status

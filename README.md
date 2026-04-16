@@ -39,13 +39,12 @@ expert-build status
 
 Requires these CLI tools to be installed:
 - `entry` — creates chronological entries
-- `beliefs` — manages belief registry
-- `shared-enterprise` — indexes entries into SQLite
+- `reasons` — reason maintenance system (from `ftl-reasons`)
 
 ## Pipeline
 
 ```
 fetch-docs → summarize → propose-beliefs → accept-beliefs → cert-coverage → exam
      ↓            ↓              ↓                ↓               ↓           ↓
-  sources/    entries/    proposed-beliefs.md   beliefs.md    coverage report  nogoods
+  sources/    entries/    proposed-beliefs.md   reasons.db    coverage report  nogoods
 ```
