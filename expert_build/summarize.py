@@ -80,22 +80,20 @@ def cmd_summarize(args):
             print(f"  ERROR: {e}")
             continue
 
-        # Add source provenance to the summary
-        if source_url:
-            summary = f"**Source:** {source_url}\n\n{summary}"
-
         # Extract a title from the summary or source filename
         title_match = re.search(r"^#+ (.+)$", summary, re.MULTILINE)
         title = title_match.group(1) if title_match else source_path.stem.replace("-", " ").title()
         topic = source_path.stem
 
         # Create entry via entry CLI
+        entry_path = None
         try:
             result = subprocess.run(
                 ["entry", "create", topic, title, "--content", summary],
                 capture_output=True, text=True,
             )
             if result.returncode == 0:
+                entry_path = result.stdout.strip().replace("Created ", "")
                 print(f"  -> {result.stdout.strip()}")
             else:
                 # Try alternative invocation
@@ -105,12 +103,23 @@ def cmd_summarize(args):
                     capture_output=True, text=True,
                 )
                 if result.returncode == 0:
+                    entry_path = result.stdout.strip().replace("Created ", "")
                     print(f"  -> {result.stdout.strip()}")
                 else:
                     print(f"  WARN: entry create failed: {result.stderr.strip()}")
         except FileNotFoundError:
             print("  ERROR: entry CLI not found. Install with: uv tool install entry")
             sys.exit(1)
+
+        # Prepend source provenance frontmatter to the entry file
+        if entry_path and source_url:
+            ep = Path(entry_path)
+            if ep.exists():
+                fm = f"---\nsource_url: {source_url}\n"
+                if source_id:
+                    fm += f"source_id: {source_id}\n"
+                fm += "---\n\n"
+                ep.write_text(fm + ep.read_text())
 
         # Record as done
         with manifest.open("a") as f:
