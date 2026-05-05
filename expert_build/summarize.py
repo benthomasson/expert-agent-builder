@@ -50,10 +50,18 @@ def cmd_summarize(args):
 
         content = source_path.read_text()
 
-        # Strip frontmatter
+        # Extract and strip frontmatter
+        source_url = None
+        source_id = None
         if content.startswith("---"):
             end = content.find("---", 3)
             if end != -1:
+                frontmatter = content[3:end]
+                for line in frontmatter.splitlines():
+                    if line.startswith("source_url:"):
+                        source_url = line.split(":", 1)[1].strip()
+                    elif line.startswith("source_id:"):
+                        source_id = line.split(":", 1)[1].strip()
                 content = content[end + 3:].strip()
 
         if not content.strip():
@@ -71,6 +79,10 @@ def cmd_summarize(args):
         except Exception as e:
             print(f"  ERROR: {e}")
             continue
+
+        # Add source provenance to the summary
+        if source_url:
+            summary = f"**Source:** {source_url}\n\n{summary}"
 
         # Extract a title from the summary or source filename
         title_match = re.search(r"^#+ (.+)$", summary, re.MULTILINE)

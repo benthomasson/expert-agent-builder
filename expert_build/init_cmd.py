@@ -23,7 +23,7 @@ def cmd_init(args):
         sys.exit(1)
 
     # git init
-    if not (cwd / ".git").exists():
+    if not getattr(args, "no_git", False) and not (cwd / ".git").exists():
         subprocess.run(["git", "init"], check=True)
         print("Initialized git repo")
 

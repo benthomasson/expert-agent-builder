@@ -27,6 +27,7 @@ def main():
     init_p = sub.add_parser("init", help="Bootstrap a new expert agent repo")
     init_p.add_argument("name", help="Domain name (e.g., rhcsa, kubernetes)")
     init_p.add_argument("--domain", help="One-line domain description")
+    init_p.add_argument("--no-git", action="store_true", help="Skip git init (for subdirectories of existing repos)")
 
     # -- fetch-docs --
     fetch_p = sub.add_parser("fetch-docs", help="Fetch documentation from URLs")
