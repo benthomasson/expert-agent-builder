@@ -41,6 +41,15 @@ def main():
     fetch_p.add_argument("--exclude", help="URL pattern to exclude (glob)")
     fetch_p.add_argument("--delay", type=float, default=1.0, help="Delay between requests in seconds (default: 1.0)")
 
+    # -- chunk-pdf --
+    chunk_p = sub.add_parser("chunk-pdf", help="Chunk a PDF paper into section entries")
+    chunk_p.add_argument("pdf", help="Path to PDF file")
+    chunk_p.add_argument("--prefix", help="Entry filename prefix (e.g., 'doyle-1979')")
+    chunk_p.add_argument("--source-label", help="Citation label for Source line")
+    chunk_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
+    chunk_p.add_argument("--dry-run", action="store_true", help="Show sections without creating entries")
+    chunk_p.add_argument("--timeout", type=int, default=600, help="LLM timeout per call in seconds (default: 600)")
+
     # -- summarize --
     sum_p = sub.add_parser("summarize", help="Generate entries from source documents")
     sum_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
@@ -98,6 +107,7 @@ def main():
 
     commands = {
         "init": lambda a: _lazy("init_cmd", "cmd_init")(a),
+        "chunk-pdf": lambda a: _lazy("chunk_pdf", "cmd_chunk_pdf")(a),
         "fetch-docs": lambda a: _lazy("fetch", "cmd_fetch_docs")(a),
         "summarize": lambda a: _lazy("summarize", "cmd_summarize")(a),
         "propose-beliefs": lambda a: _lazy("propose", "cmd_propose_beliefs")(a),
