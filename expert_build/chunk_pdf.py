@@ -1,14 +1,10 @@
 """Chunk a PDF paper into section-by-section entries."""
 
-import json
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-from .llm import check_model_available, invoke_sync
-from .prompts import CHUNK_PDF_IDENTIFY_SECTIONS, CHUNK_PDF_SECTION
 
 
 def extract_text_by_page(pdf_path: Path) -> list[str]:
@@ -35,36 +31,82 @@ def check_text_quality(pages: list[str]) -> bool:
     return avg_chars > 100
 
 
-def format_pages_for_llm(pages: list[str], start: int = 0, end: int | None = None) -> str:
-    """Format page text with [Page N] markers."""
-    if end is None:
-        end = len(pages)
-    parts = []
-    for i in range(start, min(end, len(pages))):
-        parts.append(f"[Page {i + 1}]\n{pages[i]}")
-    return "\n\n".join(parts)
+SECTION_PATTERNS = [
+    # §N. Title (AGM style, rendered as $N. by pypdf)
+    # Stop at first period that follows a word (end of title, start of sentence)
+    re.compile(r"^[§\$](\d+)\.\s+([^.]+)"),
+    # N. Title or N Title (with or without period)
+    re.compile(r"^(\d+)\.?\s+([A-Z][A-Za-z\s,;:\-]+)$"),
+]
+
+STANDALONE_SECTIONS = re.compile(
+    r"^(ABSTRACT|INTRODUCTION|ACKNOWLEDGMENT[S]?|REFERENCES|BIBLIOGRAPHY|APPENDIX|CONCLUSION[S]?)$",
+    re.IGNORECASE,
+)
+
+# Headers/footers to ignore (journal name + page number patterns)
+HEADER_FOOTER = re.compile(
+    r"^\d+\s*\.?\s+[A-Z]\.\s"  # "206 J. DE KLEER", "200 . j. DE KLEER"
+    r"|^[A-Z\s]+\d+$"  # "PROBLEM SOLVING WITH THE ATMS 205"
+    r"|^\d+\s+[A-Z\s]+$"  # "511 THE LOGIC OF THEORY CHANGE"
+    r"|^[A-Z\s]+\.\s*\d+$"  # variations with dots
+)
 
 
-def identify_sections(pages: list[str], model: str, timeout: int) -> list[dict]:
-    """Use LLM to identify top-level sections in the paper."""
-    full_text = format_pages_for_llm(pages)
+def identify_sections(pages: list[str]) -> list[dict]:
+    """Find section boundaries using structural patterns in the text."""
+    sections = []
 
-    if len(full_text) > 200000:
-        full_text = full_text[:200000] + "\n\n[Truncated — paper continues]"
+    for page_idx, page_text in enumerate(pages):
+        for line in page_text.split("\n"):
+            line = line.strip()
+            if not line or len(line) > 100:
+                continue
 
-    prompt = CHUNK_PDF_IDENTIFY_SECTIONS.format(text=full_text)
-    result = invoke_sync(prompt, model=model, timeout=timeout)
+            # Skip headers/footers
+            if HEADER_FOOTER.match(line):
+                continue
 
-    json_match = re.search(r"\[.*\]", result, re.DOTALL)
-    if not json_match:
-        raise ValueError(f"Could not parse section list from LLM response:\n{result[:500]}")
+            # Check standalone section names (ABSTRACT, REFERENCES, etc.)
+            m = STANDALONE_SECTIONS.match(line)
+            if m:
+                title = line.title()
+                # Use "0" for abstract, "R" for references, etc.
+                number = "0" if "abstract" in title.lower() else title[0]
+                sections.append({
+                    "number": number,
+                    "title": title,
+                    "start_page": page_idx + 1,
+                    "line": line,
+                })
+                continue
 
-    sections = json.loads(json_match.group())
+            # Check numbered section patterns
+            for pattern in SECTION_PATTERNS:
+                m = pattern.match(line)
+                if m:
+                    number = m.group(1)
+                    title = m.group(2).strip().rstrip(".")
+                    sections.append({
+                        "number": number,
+                        "title": title,
+                        "start_page": page_idx + 1,
+                        "line": line,
+                    })
+                    break
 
-    for s in sections:
-        s["start_page"] = int(s["start_page"])
-        s["end_page"] = int(s["end_page"])
-        s["number"] = str(s["number"])
+    # Filter out false positives: numbered items with implausibly high numbers
+    # (real top-level sections rarely exceed 20)
+    sections = [
+        s for s in sections
+        if not s["number"].isdigit() or int(s["number"]) <= 20
+    ]
+
+    # Compute end pages: each section ends where the next one starts
+    for i in range(len(sections) - 1):
+        sections[i]["end_page"] = sections[i + 1]["start_page"]
+    if sections:
+        sections[-1]["end_page"] = len(pages)
 
     return sections
 
@@ -78,28 +120,26 @@ def slugify(text: str) -> str:
     return text.strip("-")[:60]
 
 
-def generate_section_entry(
+def format_section_content(
     pages: list[str],
     section: dict,
     source_label: str,
-    model: str,
-    timeout: int,
 ) -> str:
-    """Generate entry content for one section."""
+    """Format raw page text into an entry."""
     start = section["start_page"] - 1
     end = section["end_page"]
-    section_text = format_pages_for_llm(pages, start, end)
+    raw_pages = pages[start:end]
 
-    prompt = CHUNK_PDF_SECTION.format(
-        section_number=section["number"],
-        section_title=section["title"],
-        start_page=section["start_page"],
-        end_page=section["end_page"],
-        source_label=source_label,
-        section_text=section_text,
+    header = (
+        f"**Source:** {source_label}, pp. {section['start_page']}-{section['end_page']}\n\n"
     )
 
-    return invoke_sync(prompt, model=model, timeout=timeout)
+    body = ""
+    for i, page_text in enumerate(raw_pages):
+        page_num = start + i + 1
+        body += f"[Page {page_num}]\n\n{page_text}\n\n"
+
+    return header + body.rstrip() + "\n"
 
 
 def make_entry_filename(prefix: str, section: dict) -> str:
@@ -110,10 +150,6 @@ def make_entry_filename(prefix: str, section: dict) -> str:
 
 def cmd_chunk_pdf(args):
     """Chunk a PDF paper into section-by-section entries."""
-    from .caffeinate import hold as _caffeinate
-
-    _caffeinate()
-
     pdf_path = Path(args.pdf).resolve()
     if not pdf_path.exists():
         print(f"PDF not found: {pdf_path}")
@@ -121,10 +157,6 @@ def cmd_chunk_pdf(args):
 
     if pdf_path.suffix.lower() != ".pdf":
         print(f"Not a PDF file: {pdf_path}")
-        sys.exit(1)
-
-    if not check_model_available(args.model):
-        print(f"Model not available: {args.model}")
         sys.exit(1)
 
     prefix = args.prefix or slugify(pdf_path.stem)
@@ -144,11 +176,14 @@ def cmd_chunk_pdf(args):
         sys.exit(1)
 
     print("Identifying sections...")
-    try:
-        sections = identify_sections(pages, args.model, args.timeout)
-    except Exception as e:
-        print(f"ERROR identifying sections: {e}")
-        sys.exit(1)
+    sections = identify_sections(pages)
+
+    if not sections:
+        print("  No sections found. Falling back to one entry per page.")
+        sections = [
+            {"number": str(i + 1), "title": f"Page {i + 1}", "start_page": i + 1, "end_page": i + 1}
+            for i in range(len(pages))
+        ]
 
     print(f"  Found {len(sections)} sections:")
     for s in sections:
@@ -174,17 +209,11 @@ def cmd_chunk_pdf(args):
             skipped += 1
             continue
 
-        print(f"  Chunking: Section {section['number']} — {section['title']}...")
+        print(f"  Creating: Section {section['number']} — {section['title']}...")
 
-        try:
-            content = generate_section_entry(
-                pages, section, source_label, args.model, args.timeout,
-            )
-        except Exception as e:
-            print(f"    ERROR: {e}")
-            continue
-
+        content = format_section_content(pages, section, source_label)
         title = f"Section {section['number']}: {section['title']}"
+
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".md", delete=False,

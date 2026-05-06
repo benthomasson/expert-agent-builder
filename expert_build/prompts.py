@@ -89,59 +89,6 @@ VERDICT: CORRECT or WRONG
 EXPLANATION: <one sentence>
 """
 
-CHUNK_PDF_IDENTIFY_SECTIONS = """\
-You are analyzing the structure of an academic paper. Given the full text below, \
-identify every major section of the paper.
-
-For each section, output a JSON array of objects with these fields:
-- "number": the section number as it appears in the paper (e.g., "1", "2", "3")
-- "title": the section title
-- "start_page": the first page of the section (1-indexed, using the [Page N] markers)
-- "end_page": the last page of the section (1-indexed)
-
-Use top-level sections only (not subsections). Include front matter \
-(abstract, introduction) and back matter (bibliography, appendices, references) \
-as separate sections.
-
-Output ONLY the JSON array, no other text.
-
----
-
-PAPER TEXT (pages numbered in brackets):
-
-{text}
-"""
-
-CHUNK_PDF_SECTION = """\
-You are creating a detailed study entry for one section of an academic paper. \
-The entry should capture the section's content faithfully — definitions, arguments, \
-algorithms, examples, and formal notation — while being readable as a standalone \
-document.
-
-Structure your output exactly as:
-
-# Section {section_number}: {section_title} (pp. {start_page}-{end_page})
-
-**Source:** {source_label}, pp. {start_page}-{end_page}
-
-## [Subsection headings as appropriate]
-
-[Detailed content: transcribe key definitions verbatim, summarize arguments, \
-reproduce formal notation and algorithms, include examples from the paper. \
-Write 1500-4000 words. Be thorough and faithful to the source.]
-
-## Key Claims
-
-[6-10 bullet points. Each should be a single, specific, testable assertion — \
-a definition, design decision, algorithm property, or factual claim from this section.]
-
----
-
-SECTION TEXT (from the paper):
-
-{section_text}
-"""
-
 CERT_MATCH = """\
 Given a certification objective and a list of beliefs, determine which beliefs \
 (if any) cover this objective. Return the belief IDs that match, one per line. \

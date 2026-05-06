@@ -46,9 +46,7 @@ def main():
     chunk_p.add_argument("pdf", help="Path to PDF file")
     chunk_p.add_argument("--prefix", help="Entry filename prefix (e.g., 'doyle-1979')")
     chunk_p.add_argument("--source-label", help="Citation label for Source line")
-    chunk_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
     chunk_p.add_argument("--dry-run", action="store_true", help="Show sections without creating entries")
-    chunk_p.add_argument("--timeout", type=int, default=600, help="LLM timeout per call in seconds (default: 600)")
 
     # -- summarize --
     sum_p = sub.add_parser("summarize", help="Generate entries from source documents")
