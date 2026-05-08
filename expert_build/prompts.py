@@ -37,6 +37,7 @@ in this exact format:
 ### [ACCEPT/REJECT] <belief-id-in-kebab-case>
 <one-line factual claim>
 - Source: <path to the entry file>
+- Source URL: <url from SOURCE_URL in file header, or "none" if not present>
 
 Rules:
 - Each belief should be a single, testable factual claim

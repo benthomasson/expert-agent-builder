@@ -317,7 +317,18 @@ def cmd_propose_beliefs(args):
         content = entry_path.read_text()
         if len(content) > 10000:
             content = content[:10000] + "\n[Truncated]"
-        current_batch.append(f"--- FILE: {entry_path} ---\n{content}")
+        source_url = ""
+        if content.startswith("---"):
+            end = content.find("---", 3)
+            if end != -1:
+                for line in content[3:end].splitlines():
+                    if line.startswith("source_url:"):
+                        source_url = line.split(":", 1)[1].strip()
+        header = f"--- FILE: {entry_path}"
+        if source_url:
+            header += f" | SOURCE_URL: {source_url}"
+        header += " ---"
+        current_batch.append(f"{header}\n{content}")
         current_paths.append(str(entry_path))
         if len(current_batch) >= args.batch_size:
             batches.append("\n\n".join(current_batch))
@@ -423,7 +434,8 @@ def cmd_accept_beliefs(args):
     pattern = re.compile(
         r"### \[?ACCEPT\]? (\S+)\n"
         r"(.+?)\n"
-        r"- Source: (.+?)(?:\n|$)"
+        r"- Source: (.+?)\n"
+        r"(?:- Source URL: (.+?)\n)?"
     )
     matches = pattern.findall(text)
 
@@ -436,12 +448,17 @@ def cmd_accept_beliefs(args):
 
     added = 0
     failed = 0
-    for belief_id, claim_text, source in matches:
+    for match in matches:
+        belief_id, claim_text, source = match[0], match[1], match[2]
+        source_url = match[3] if len(match) > 3 else ""
+        if source_url and source_url.lower() == "none":
+            source_url = ""
         try:
             add_node(
                 node_id=belief_id,
                 text=claim_text.strip(),
                 source=source.strip(),
+                source_url=source_url.strip() if source_url else "",
                 db_path=REASONS_DB,
             )
             print(f"  Added: {belief_id}")
