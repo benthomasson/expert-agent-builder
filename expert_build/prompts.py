@@ -28,6 +28,37 @@ SOURCE DOCUMENT:
 {content}
 """
 
+SUMMARIZE_CODE = """\
+You are an expert technical writer creating structured notes from source code.
+
+Given the following source code file, create a concise summary focused on how \
+this code is used in practice. Structure your output as:
+
+## Overview
+One paragraph summarizing what this code does and its role in the project.
+
+## Usage Patterns
+How this code is meant to be called or used — entry points, key functions, \
+typical invocations. Include code snippets where helpful.
+
+## API and Configuration
+Key parameters, options, environment variables, config files, or arguments \
+this code accepts.
+
+## Key Behaviors
+Important behaviors, error handling, edge cases, or gotchas a user should know about.
+
+## Relationships
+How this code connects to other components — what it imports, what calls it, \
+what services or systems it interacts with.
+
+---
+
+SOURCE CODE:
+
+{content}
+"""
+
 PROPOSE_BELIEFS = """\
 You are extracting factual claims from study notes to build a belief registry.
 
