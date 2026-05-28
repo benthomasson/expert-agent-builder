@@ -34,8 +34,10 @@ You are an expert technical writer creating structured notes from source code.
 Given the following source code file, create a concise summary focused on how \
 this code is used in practice. Structure your output as:
 
-## Overview
-One paragraph summarizing what this code does and its role in the project.
+## <Descriptive Title>
+Start with a short, specific title that names the module or component (e.g., \
+"CLI Entry Point", "PDF Chunker", "LLM Invocation Layer"). Then one paragraph \
+summarizing what this code does and its role in the project.
 
 ## Usage Patterns
 How this code is meant to be called or used — entry points, key functions, \
