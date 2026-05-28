@@ -75,11 +75,12 @@ def cmd_summarize(args):
         if len(content) > 30000:
             original_len = len(content)
             content = content[:30000] + "\n\n[Truncated — original was longer]"
-            print(f"  WARN: truncated from {original_len} to 30000 chars. "
-                  f"Consider: code-expert chunk-pdf {source_path}"
-                  if source_path.suffix == ".pdf"
-                  else f"  WARN: truncated from {original_len} to 30000 chars. "
-                  f"Large documents may lose tail content.")
+            if source_path.suffix == ".pdf":
+                print(f"  WARN: truncated from {original_len} to 30000 chars. "
+                      f"Consider: expert-build chunk-pdf {source_path}")
+            else:
+                print(f"  WARN: truncated from {original_len} to 30000 chars. "
+                      f"Large documents may lose tail content.")
 
         template = SUMMARIZE_CODE if source_path.suffix == ".py" else SUMMARIZE
         prompt = template.format(content=content)
