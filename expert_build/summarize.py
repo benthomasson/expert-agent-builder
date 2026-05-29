@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .llm import check_model_available, invoke_sync
-from .prompts import SUMMARIZE
+from .prompts import SUMMARIZE, SUMMARIZE_CODE
 
 
 def cmd_summarize(args):
@@ -24,9 +24,12 @@ def cmd_summarize(args):
         print("Install claude CLI or specify --model")
         sys.exit(1)
 
-    sources = sorted(input_dir.glob("*.md"))
+    sources = sorted(
+        [*input_dir.glob("*.md"), *input_dir.glob("*.py")],
+        key=lambda p: p.name,
+    )
     if not sources:
-        print(f"No .md files in {input_dir}")
+        print(f"No .md or .py files in {input_dir}")
         return
 
     if args.limit:
@@ -70,9 +73,17 @@ def cmd_summarize(args):
 
         # Truncate very long documents
         if len(content) > 30000:
+            original_len = len(content)
             content = content[:30000] + "\n\n[Truncated — original was longer]"
+            if source_path.suffix == ".pdf":
+                print(f"  WARN: truncated from {original_len} to 30000 chars. "
+                      f"Consider: expert-build chunk-pdf {source_path}")
+            else:
+                print(f"  WARN: truncated from {original_len} to 30000 chars. "
+                      f"Large documents may lose tail content.")
 
-        prompt = SUMMARIZE.format(content=content)
+        template = SUMMARIZE_CODE if source_path.suffix == ".py" else SUMMARIZE
+        prompt = template.format(content=content)
 
         try:
             summary = invoke_sync(prompt, model=args.model)
