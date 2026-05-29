@@ -6,8 +6,10 @@ You are an expert technical writer creating structured study notes.
 Given the following documentation page, create a concise summary suitable for \
 building domain expertise. Structure your output as:
 
-## Overview
-One paragraph summarizing what this page covers.
+## <Descriptive Title>
+Start with a short, specific title that names the topic (e.g., \
+"IAM Role Configuration", "Network Policy Rules", "Cluster Autoscaling"). \
+Then one paragraph summarizing what this page covers.
 
 ## Key Concepts
 Bulleted list of the most important facts, definitions, and concepts.
