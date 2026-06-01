@@ -2,7 +2,7 @@
 
 import types
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -106,6 +106,22 @@ class TestStageIngest:
         with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk:
             _stage_ingest(args)
         assert mock_chunk.called
+
+    def test_no_fetch_still_chunks_pdf(self, work_dir):
+        args = make_pipeline_args(no_fetch=True, pdf=["paper.pdf"])
+        with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk:
+            _stage_ingest(args)
+        assert mock_chunk.called
+
+    def test_no_fetch_skips_url_but_chunks_pdf(self, work_dir, capsys):
+        args = make_pipeline_args(no_fetch=True, url="https://example.com", pdf=["paper.pdf"])
+        with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk, \
+             patch("expert_build.fetch.cmd_fetch_docs") as mock_fetch:
+            _stage_ingest(args)
+        assert not mock_fetch.called
+        assert mock_chunk.called
+        captured = capsys.readouterr()
+        assert "Skipping fetch" in captured.err
 
 
 # --- Stage: Extract ---

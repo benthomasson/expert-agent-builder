@@ -1,6 +1,6 @@
 """End-to-end EEM construction pipeline."""
 
-import re
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,11 +17,7 @@ def _banner(stage_num, total, name):
 
 def _stage_ingest(args):
     """Stage 1: Fetch docs or chunk PDFs into sources/."""
-    if args.no_fetch:
-        print("Skipping fetch (--no-fetch)", file=sys.stderr)
-        return
-
-    if args.url:
+    if not args.no_fetch and args.url:
         from .fetch import cmd_fetch_docs
         fetch_args = SimpleNamespace(
             url=args.url,
@@ -34,6 +30,8 @@ def _stage_ingest(args):
             delay=1.0,
         )
         cmd_fetch_docs(fetch_args)
+    elif args.no_fetch:
+        print("Skipping fetch (--no-fetch)", file=sys.stderr)
 
     if args.pdf:
         from .chunk_pdf import cmd_chunk_pdf
@@ -222,13 +220,12 @@ def _stage_deduplicate(args, round_label=""):
 
 
 def _stage_export(args):
-    """Stage 9: Export network and README card."""
+    """Export network and README card."""
     from reasons_lib.api import export_network, export_card
 
     data = export_network(db_path=REASONS_DB)
 
     network_path = Path("network.json")
-    import json
     network_path.write_text(json.dumps(data, indent=2))
     print(f"Exported {network_path}", file=sys.stderr)
 
@@ -252,7 +249,7 @@ def cmd_pipeline(args):
         print(f"Model not available: {args.model}", file=sys.stderr)
         sys.exit(1)
 
-    total_stages = 9
+    total_stages = 8
     has_sources = args.url or args.pdf
 
     # Stage 1: Ingest
@@ -276,33 +273,28 @@ def cmd_pipeline(args):
     for cycle in range(1, args.rounds + 1):
         label = f"cycle {cycle}/{args.rounds}"
 
-        # Stage 4: Derive
         _banner(4, total_stages, f"DERIVE ({label})")
         added = _stage_derive(args, round_label=label)
 
-        # Stage 5: Review
         _banner(5, total_stages, f"REVIEW ({label})")
         review_result = _stage_review(args, round_label=label)
 
         invalid_count = review_result.get("invalid", 0)
 
-        # Stage 6: Repair
         if invalid_count > 0:
             _banner(6, total_stages, f"REPAIR ({label})")
             _stage_repair(args, review_result, round_label=label)
 
-        # Stage 7: Deduplicate
         _banner(7, total_stages, f"DEDUPLICATE ({label})")
         _stage_deduplicate(args, round_label=label)
 
-        # Check convergence
         if invalid_count == 0 and added == 0:
             print(f"\nConverged after {cycle} cycles "
                   f"(0 invalids, 0 new derivations)", file=sys.stderr)
             break
 
-    # Stage 9: Export
-    _banner(9, total_stages, "EXPORT")
+    # Stage 8: Export
+    _banner(8, total_stages, "EXPORT")
     _stage_export(args)
 
     print("\nPipeline complete.", file=sys.stderr)
