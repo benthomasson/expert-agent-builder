@@ -250,6 +250,14 @@ def _build_dedup_context(
 # --- Commands ---
 
 
+def auto_accept_proposals(filepath: str):
+    """Rewrite all [ACCEPT/REJECT] markers to [ACCEPT] in a proposals file."""
+    path = Path(filepath)
+    text = path.read_text()
+    text = re.sub(r'\[ACCEPT/REJECT\]', '[ACCEPT]', text)
+    path.write_text(text)
+
+
 def cmd_propose_beliefs(args):
     """Extract candidate beliefs from entries for human review."""
     from .caffeinate import hold as _caffeinate

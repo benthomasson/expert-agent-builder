@@ -1,0 +1,289 @@
+"""Tests for the pipeline command."""
+
+import types
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+from expert_build.pipeline import (
+    cmd_pipeline,
+    _stage_ingest,
+    _stage_extract,
+    _stage_derive,
+    _stage_review,
+    _stage_repair,
+    _stage_deduplicate,
+)
+from expert_build.propose import auto_accept_proposals
+
+
+@pytest.fixture
+def work_dir(tmp_path, monkeypatch):
+    """Set working directory to tmp_path for isolated pipeline runs."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sources").mkdir()
+    (tmp_path / "entries").mkdir()
+    (tmp_path / "reasons.db").touch()
+    return tmp_path
+
+
+def make_pipeline_args(**overrides):
+    defaults = dict(
+        url=None,
+        pdf=None,
+        sources_dir="sources",
+        model="claude",
+        rounds=3,
+        max_derive_rounds=10,
+        no_auto_accept=False,
+        no_fetch=False,
+        depth=2,
+        timeout=600,
+        domain="Test domain",
+    )
+    defaults.update(overrides)
+    return types.SimpleNamespace(**defaults)
+
+
+# --- auto_accept_proposals ---
+
+class TestAutoAcceptProposals:
+    def test_replaces_markers(self, tmp_path):
+        f = tmp_path / "proposals.md"
+        f.write_text(
+            "### [ACCEPT/REJECT] belief-one\n"
+            "Text one\n"
+            "### [ACCEPT/REJECT] belief-two\n"
+            "Text two\n"
+        )
+        auto_accept_proposals(str(f))
+        text = f.read_text()
+        assert "[ACCEPT/REJECT]" not in text
+        assert text.count("[ACCEPT]") == 2
+
+    def test_preserves_already_accepted(self, tmp_path):
+        f = tmp_path / "proposals.md"
+        f.write_text(
+            "### [ACCEPT] already-good\n"
+            "Text\n"
+            "### [ACCEPT/REJECT] needs-accept\n"
+            "Text\n"
+        )
+        auto_accept_proposals(str(f))
+        text = f.read_text()
+        assert text.count("[ACCEPT]") == 2
+        assert "[ACCEPT/REJECT]" not in text
+
+    def test_no_markers_is_noop(self, tmp_path):
+        f = tmp_path / "proposals.md"
+        original = "### ACCEPT belief-one\nText\n"
+        f.write_text(original)
+        auto_accept_proposals(str(f))
+        assert f.read_text() == original
+
+
+# --- Stage: Ingest ---
+
+class TestStageIngest:
+    def test_skips_when_no_fetch(self, work_dir, capsys):
+        args = make_pipeline_args(no_fetch=True)
+        _stage_ingest(args)
+        captured = capsys.readouterr()
+        assert "Skipping fetch" in captured.err
+
+    def test_calls_fetch_docs_with_url(self, work_dir):
+        args = make_pipeline_args(url="https://example.com/docs")
+        with patch("expert_build.fetch.cmd_fetch_docs") as mock_fetch:
+            _stage_ingest(args)
+        assert mock_fetch.called
+        fetch_args = mock_fetch.call_args[0][0]
+        assert fetch_args.url == "https://example.com/docs"
+        assert fetch_args.depth == 2
+
+    def test_calls_chunk_pdf(self, work_dir):
+        args = make_pipeline_args(pdf=["paper.pdf"])
+        with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk:
+            _stage_ingest(args)
+        assert mock_chunk.called
+
+
+# --- Stage: Extract ---
+
+class TestStageExtract:
+    def test_stops_on_no_auto_accept(self, work_dir, capsys):
+        args = make_pipeline_args(no_auto_accept=True)
+        with patch("expert_build.propose.cmd_propose_beliefs"):
+            result = _stage_extract(args)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "--no-auto-accept" in captured.err
+
+    def test_auto_accepts_and_imports(self, work_dir):
+        proposals = work_dir / "proposed-beliefs.md"
+        proposals.write_text("### [ACCEPT/REJECT] test-belief\nText\n- Source: test\n")
+        args = make_pipeline_args()
+
+        with patch("expert_build.propose.cmd_propose_beliefs"), \
+             patch("expert_build.propose.cmd_accept_beliefs") as mock_accept:
+            result = _stage_extract(args)
+
+        assert result is True
+        assert mock_accept.called
+        text = proposals.read_text()
+        assert "[ACCEPT]" in text
+        assert "[ACCEPT/REJECT]" not in text
+
+
+# --- Stage: Derive ---
+
+class TestStageDerive:
+    def test_returns_zero_on_empty_network(self, work_dir):
+        args = make_pipeline_args()
+        with patch("reasons_lib.api.export_network", return_value={"nodes": {}}):
+            added = _stage_derive(args)
+        assert added == 0
+
+    def test_saturates_on_no_proposals(self, work_dir):
+        args = make_pipeline_args()
+        nodes = {"belief-1": {"text": "Test", "truth_value": "IN", "justifications": []}}
+        stats = {"total_in": 1, "total_derived": 0, "max_depth": 0, "agents": 0}
+        with patch("reasons_lib.api.export_network", return_value={"nodes": nodes}), \
+             patch("reasons_lib.derive.build_prompt", return_value=("prompt", stats)), \
+             patch("expert_build.llm.invoke_sync", return_value="No proposals"), \
+             patch("reasons_lib.derive.parse_proposals", return_value=[]):
+            added = _stage_derive(args)
+        assert added == 0
+
+    def test_applies_valid_proposals(self, work_dir):
+        args = make_pipeline_args(max_derive_rounds=1)
+        nodes = {"belief-1": {"text": "Test", "truth_value": "IN", "justifications": []}}
+        stats = {"total_in": 1, "total_derived": 0, "max_depth": 0, "agents": 0}
+        proposal = {
+            "id": "derived-1", "text": "Derived",
+            "antecedents": ["belief-1"], "unless": [],
+            "label": "test", "kind": "derive",
+        }
+        with patch("reasons_lib.api.export_network", return_value={"nodes": nodes}), \
+             patch("reasons_lib.derive.build_prompt", return_value=("prompt", stats)), \
+             patch("expert_build.llm.invoke_sync", return_value="proposal text"), \
+             patch("reasons_lib.derive.parse_proposals", return_value=[proposal]), \
+             patch("reasons_lib.derive.validate_proposals", return_value=([proposal], [])), \
+             patch("reasons_lib.derive.apply_proposals", return_value=[(proposal, {"truth_value": "IN"})]):
+            added = _stage_derive(args)
+        assert added == 1
+
+
+# --- Stage: Review ---
+
+class TestStageReview:
+    def test_returns_review_result(self, work_dir):
+        args = make_pipeline_args()
+        result = {"reviewed": 5, "invalid": 2, "results": []}
+        with patch("reasons_lib.api.review_beliefs", return_value=result):
+            got = _stage_review(args)
+        assert got["reviewed"] == 5
+        assert got["invalid"] == 2
+
+
+# --- Stage: Repair ---
+
+class TestStageRepair:
+    def test_skips_when_no_invalids(self, work_dir, capsys):
+        args = make_pipeline_args()
+        review_result = {"results": [{"belief_id": "b1", "valid": True}]}
+        result = _stage_repair(args, review_result)
+        assert result["total_invalid"] == 0
+        captured = capsys.readouterr()
+        assert "No invalid beliefs" in captured.err
+
+    def test_calls_research_with_invalid_ids(self, work_dir):
+        args = make_pipeline_args()
+        review_result = {"results": [
+            {"belief_id": "b1", "valid": False},
+            {"belief_id": "b2", "valid": True},
+            {"belief_id": "b3", "valid": False},
+        ]}
+        research_result = {
+            "total_invalid": 2, "linked": 1,
+            "softened": 1, "abandoned": 0,
+        }
+        with patch("reasons_lib.api.research", return_value=research_result) as mock_research:
+            result = _stage_repair(args, review_result)
+        assert mock_research.called
+        call_kwargs = mock_research.call_args[1]
+        assert set(call_kwargs["belief_ids"]) == {"b1", "b3"}
+        assert result["linked"] == 1
+
+
+# --- Stage: Deduplicate ---
+
+class TestStageDeduplicate:
+    def test_reports_no_duplicates(self, work_dir, capsys):
+        args = make_pipeline_args()
+        with patch("reasons_lib.api.deduplicate", return_value={"clusters": [], "retracted": []}):
+            _stage_deduplicate(args)
+        captured = capsys.readouterr()
+        assert "No duplicates found" in captured.err
+
+
+# --- Full Pipeline ---
+
+class TestCmdPipeline:
+    def test_model_not_available_exits(self, work_dir):
+        args = make_pipeline_args(model="nonexistent")
+        with patch("expert_build.llm.check_model_available", return_value=False), \
+             pytest.raises(SystemExit):
+            cmd_pipeline(args)
+
+    def test_converges_early_on_zero_invalids_and_zero_added(self, work_dir, capsys):
+        args = make_pipeline_args(rounds=3, url=None, pdf=None)
+        review_result = {"reviewed": 5, "invalid": 0, "results": []}
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract", return_value=True), \
+             patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"), \
+             patch("expert_build.pipeline._stage_export"), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(args)
+
+        captured = capsys.readouterr()
+        assert "Converged after 1 cycle" in captured.err
+
+    def test_runs_all_rounds_without_convergence(self, work_dir, capsys):
+        args = make_pipeline_args(rounds=2, url=None, pdf=None)
+        review_result = {"reviewed": 5, "invalid": 1, "results": [
+            {"belief_id": "b1", "valid": False},
+        ]}
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract", return_value=True), \
+             patch("expert_build.pipeline._stage_derive", return_value=1), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_repair"), \
+             patch("expert_build.pipeline._stage_deduplicate"), \
+             patch("expert_build.pipeline._stage_export"), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(args)
+
+        captured = capsys.readouterr()
+        assert "Converged" not in captured.err
+        assert "Pipeline complete" in captured.err
+
+    def test_no_auto_accept_stops_early(self, work_dir, capsys):
+        args = make_pipeline_args(no_auto_accept=True, url=None, pdf=None)
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract", return_value=False), \
+             patch("expert_build.pipeline._stage_derive") as mock_derive, \
+             patch("expert_build.pipeline._stage_export") as mock_export, \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(args)
+
+        assert not mock_derive.called
+        assert not mock_export.called

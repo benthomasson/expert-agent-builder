@@ -89,6 +89,26 @@ def main():
     exam_p.add_argument("--no-judge", action="store_true",
                         help="Disable LLM judge for open-ended questions (use string matching)")
 
+    # -- pipeline --
+    pipe_p = sub.add_parser("pipeline", help="Run end-to-end EEM construction pipeline")
+    pipe_p.add_argument("--url", help="Starting URL for doc fetching")
+    pipe_p.add_argument("--pdf", action="append", help="PDF files to chunk (repeatable)")
+    pipe_p.add_argument("--sources-dir", default="sources", help="Source directory (default: sources)")
+    pipe_p.add_argument("--model", default="claude", help="Model for LLM calls (default: claude)")
+    pipe_p.add_argument("--rounds", type=int, default=3,
+                        help="Max derive/review/repair cycles (default: 3)")
+    pipe_p.add_argument("--max-derive-rounds", type=int, default=10,
+                        help="Max derive exhaust rounds per cycle (default: 10)")
+    pipe_p.add_argument("--no-auto-accept", action="store_true",
+                        help="Stop after propose-beliefs for human review")
+    pipe_p.add_argument("--no-fetch", action="store_true",
+                        help="Skip fetch-docs (use existing sources/)")
+    pipe_p.add_argument("--depth", type=int, default=2,
+                        help="Crawl depth for fetch-docs (default: 2)")
+    pipe_p.add_argument("--timeout", type=int, default=600,
+                        help="LLM timeout in seconds (default: 600)")
+    pipe_p.add_argument("--domain", help="Domain description for derive context")
+
     # -- status --
     sub.add_parser("status", help="Show pipeline progress")
 
@@ -112,6 +132,7 @@ def main():
         "accept-beliefs": lambda a: _lazy("propose", "cmd_accept_beliefs")(a),
         "cert-coverage": lambda a: _lazy("coverage", "cmd_cert_coverage")(a),
         "exam": lambda a: _lazy("exam", "cmd_exam")(a),
+        "pipeline": lambda a: _lazy("pipeline", "cmd_pipeline")(a),
         "status": lambda a: _lazy("init_cmd", "cmd_status")(a),
         "install-skill": lambda a: _lazy("init_cmd", "cmd_install_skill")(a),
     }
