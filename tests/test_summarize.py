@@ -130,7 +130,7 @@ def test_truncation_warning_for_large_file(source_dir, work_dir, capsys):
 
     captured = capsys.readouterr()
     assert "WARN: truncated from 50000 to 30000 chars" in captured.out
-    assert "Large documents may lose tail content" in captured.out
+    assert "Consider: expert-build chunk-docs" in captured.out
 
 
 def test_truncation_content_is_capped(source_dir, work_dir):
