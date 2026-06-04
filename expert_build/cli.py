@@ -111,6 +111,18 @@ def main():
     pipe_p.add_argument("--resume", action="store_true",
                         help="Resume from last saved pipeline state")
 
+    # -- derive-review-repair --
+    drr_p = sub.add_parser("derive-review-repair",
+                           help="Run derive/review/repair loop on existing belief network")
+    drr_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
+    drr_p.add_argument("--rounds", type=int, default=3,
+                       help="Max derive/review/repair cycles (default: 3)")
+    drr_p.add_argument("--max-derive-rounds", type=int, default=10,
+                       help="Max derive exhaust rounds per cycle (default: 10)")
+    drr_p.add_argument("--timeout", type=int, default=600,
+                       help="LLM timeout in seconds (default: 600)")
+    drr_p.add_argument("--domain", help="Domain description for derive context")
+
     # -- status --
     sub.add_parser("status", help="Show pipeline progress")
 
@@ -135,6 +147,7 @@ def main():
         "cert-coverage": lambda a: _lazy("coverage", "cmd_cert_coverage")(a),
         "exam": lambda a: _lazy("exam", "cmd_exam")(a),
         "pipeline": lambda a: _lazy("pipeline", "cmd_pipeline")(a),
+        "derive-review-repair": lambda a: _lazy("pipeline", "cmd_derive_review_repair")(a),
         "status": lambda a: _lazy("init_cmd", "cmd_status")(a),
         "install-skill": lambda a: _lazy("init_cmd", "cmd_install_skill")(a),
     }
