@@ -8,7 +8,8 @@ from expert_build.cli import main
 
 
 def test_cli_registration_is_consistent():
-    """Current subparsers and dispatch dict are in sync (no startup error)."""
-    with patch("sys.argv", ["expert-build", "--help"]), \
-         pytest.raises(SystemExit, match="0"):
+    """Current subparsers and dispatch dict are in sync."""
+    with patch("sys.argv", ["expert-build", "status"]), \
+         patch("expert_build.cli._lazy") as mock_lazy:
+        mock_lazy.return_value = lambda a: None
         main()
