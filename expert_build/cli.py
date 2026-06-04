@@ -138,6 +138,20 @@ def main():
         "status": lambda a: _lazy("init_cmd", "cmd_status")(a),
         "install-skill": lambda a: _lazy("init_cmd", "cmd_install_skill")(a),
     }
+
+    subparser_names = set(sub.choices.keys())
+    command_names = set(commands.keys())
+    if subparser_names != command_names:
+        missing_dispatch = subparser_names - command_names
+        missing_parser = command_names - subparser_names
+        parts = []
+        if missing_dispatch:
+            parts.append(f"subcommands without dispatch: {sorted(missing_dispatch)}")
+        if missing_parser:
+            parts.append(f"dispatch keys without subcommand: {sorted(missing_parser)}")
+        print(f"CLI registration error: {'; '.join(parts)}", file=sys.stderr)
+        sys.exit(1)
+
     commands[args.command](args)
 
 
