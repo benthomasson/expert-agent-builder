@@ -1,5 +1,6 @@
 """Practice exam runner for nogood discovery."""
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -102,25 +103,50 @@ def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
     return "\n".join(beliefs)
 
 
-def extract_answer(response: str) -> str:
-    """Extract the answer from LLM response."""
-    # Look for ANSWER: line
-    match = re.search(r"ANSWER:\s*(.+)", response, re.IGNORECASE)
-    if match:
-        ans = match.group(1).strip()
-        # If it's a letter choice, extract just the letter
-        letter_match = re.match(r"([a-d])[.):\s]", ans, re.IGNORECASE)
-        if letter_match:
-            return letter_match.group(1).lower()
-        return ans
+RETRY_JSON = "Your response was not valid JSON. Respond with ONLY the JSON object, no other text."
 
-    # Fallback: look for a single letter on its own
-    lines = response.strip().split("\n")
-    for line in lines:
-        line = line.strip()
-        if re.match(r"^[a-d]$", line, re.IGNORECASE):
-            return line.lower()
 
+def _extract_json(response: str) -> dict | None:
+    """Extract a JSON object from an LLM response."""
+    text = response.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
+def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
+    """Extract answer from JSON LLM response, retrying on parse failure."""
+    data = _extract_json(response)
+    if data and "answer" in data:
+        return str(data["answer"]).strip()
+
+    if model and prompt:
+        print("    WARN: response not valid JSON, retrying...", file=sys.stderr)
+        try:
+            retry_response = invoke_sync(
+                prompt + "\n\n" + response + "\n\n" + RETRY_JSON,
+                model=model, timeout=60,
+            )
+            data = _extract_json(retry_response)
+            if data and "answer" in data:
+                return str(data["answer"]).strip()
+        except Exception:
+            pass
+
+    print("    WARN: could not parse answer JSON", file=sys.stderr)
     return response.strip()[:100]
 
 
@@ -132,16 +158,26 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
     except Exception:
         return False, "judge error"
 
-    verdict_match = re.search(r"VERDICT:\s*(CORRECT|WRONG)", response, re.IGNORECASE)
-    if not verdict_match:
-        return False, "no verdict"
+    data = _extract_json(response)
+    if data and "verdict" in data:
+        is_correct = str(data["verdict"]).strip().upper() == "CORRECT"
+        return is_correct, str(data.get("explanation", "")).strip()
 
-    is_correct = verdict_match.group(1).upper() == "CORRECT"
-    explanation = ""
-    exp_match = re.search(r"EXPLANATION:\s*(.+)", response, re.IGNORECASE)
-    if exp_match:
-        explanation = exp_match.group(1).strip()
-    return is_correct, explanation
+    print("    WARN: verdict not valid JSON, retrying...", file=sys.stderr)
+    try:
+        retry_response = invoke_sync(
+            prompt + "\n\n" + response + "\n\n" + RETRY_JSON,
+            model=model, timeout=60,
+        )
+        data = _extract_json(retry_response)
+        if data and "verdict" in data:
+            is_correct = data["verdict"].strip().upper() == "CORRECT"
+            return is_correct, data.get("explanation", "")
+    except Exception:
+        pass
+
+    print("    WARN: could not parse verdict JSON", file=sys.stderr)
+    return False, "no verdict"
 
 
 def cmd_exam(args):
@@ -194,7 +230,7 @@ def cmd_exam(args):
             results.append({"question": q, "status": "ERROR", "error": str(e)})
             continue
 
-        answer = extract_answer(response)
+        answer = extract_answer(response, model=args.model, prompt=prompt)
         expected = q["correct"].strip().lower()
         use_judge = not getattr(args, 'no_judge', False)
 

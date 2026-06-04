@@ -99,9 +99,8 @@ Your current knowledge (beliefs):
 Question: {question}
 {choices}
 
-Provide your answer and brief explanation. Format:
-ANSWER: <letter or text>
-EXPLANATION: <one paragraph>
+Respond with ONLY this JSON (no other text):
+{{"answer": "<letter or short answer>", "explanation": "<one paragraph>"}}
 """
 
 EXAM_JUDGE = """\
@@ -120,9 +119,8 @@ expected answer. Minor differences in wording, additional correct detail, or \
 different but valid approaches should count as correct. Missing key facts or \
 fundamentally wrong reasoning should count as wrong.
 
-Format your response as:
-VERDICT: CORRECT or WRONG
-EXPLANATION: <one sentence>
+Respond with ONLY this JSON (no other text):
+{{"verdict": "CORRECT or WRONG", "explanation": "<one sentence>"}}
 """
 
 CERT_MATCH = """\
