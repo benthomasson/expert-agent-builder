@@ -58,7 +58,7 @@ def test_proposals_written_after_each_batch(entries_dir, work_dir):
         call_count += 1
         if call_count == 2:
             raise RuntimeError("simulated crash")
-        return _json_beliefs(("belief-from-batch-1", "A belief."))
+        return _json_beliefs((f"belief-from-batch-{call_count}", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
          patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
