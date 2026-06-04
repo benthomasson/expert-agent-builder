@@ -83,7 +83,7 @@ def cmd_summarize(args):
                       f"Consider: expert-build chunk-pdf {source_path}")
             else:
                 print(f"  WARN: truncated from {original_len} to 30000 chars. "
-                      f"Large documents may lose tail content.")
+                      f"Consider: expert-build chunk-docs")
 
         template = SUMMARIZE_CODE if source_path.suffix == ".py" else SUMMARIZE
         prompt = template.format(content=content)

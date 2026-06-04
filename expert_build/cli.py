@@ -48,6 +48,13 @@ def main():
     chunk_p.add_argument("--source-label", help="Citation label for Source line")
     chunk_p.add_argument("--dry-run", action="store_true", help="Show sections without creating entries")
 
+    # -- chunk-docs --
+    chunkd_p = sub.add_parser("chunk-docs", help="Chunk large documents into entry-sized pieces")
+    chunkd_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
+    chunkd_p.add_argument("--threshold", type=int, default=30000,
+                          help="Only chunk files larger than this (default: 30000)")
+    chunkd_p.add_argument("--dry-run", action="store_true", help="Show chunks without creating entries")
+
     # -- summarize --
     sum_p = sub.add_parser("summarize", help="Generate entries from source documents")
     sum_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
@@ -140,6 +147,7 @@ def main():
     commands = {
         "init": lambda a: _lazy("init_cmd", "cmd_init")(a),
         "chunk-pdf": lambda a: _lazy("chunk_pdf", "cmd_chunk_pdf")(a),
+        "chunk-docs": lambda a: _lazy("chunk_docs", "cmd_chunk_docs")(a),
         "fetch-docs": lambda a: _lazy("fetch", "cmd_fetch_docs")(a),
         "summarize": lambda a: _lazy("summarize", "cmd_summarize")(a),
         "propose-beliefs": lambda a: _lazy("propose", "cmd_propose_beliefs")(a),
