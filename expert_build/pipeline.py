@@ -334,7 +334,7 @@ def cmd_pipeline(args):
             print("Pipeline already completed. Run without --resume to start fresh.",
                   file=sys.stderr)
             return
-        print(f"Resuming pipeline from state file", file=sys.stderr)
+        print("Resuming pipeline from state file", file=sys.stderr)
         state["status"] = "running"
         _save_state(state)
     else:
@@ -380,42 +380,48 @@ def cmd_pipeline(args):
             print("Stage 3 (EXTRACT) already completed, skipping", file=sys.stderr)
 
         # Stages 4-7: Derive → Review → Repair → Deduplicate (convergence loop)
-        start_cycle = state.get("current_cycle") or 1
-        for cycle in range(start_cycle, args.rounds + 1):
-            label = f"cycle {cycle}/{args.rounds}"
-            state["current_cycle"] = cycle
+        if not state.get("loop_completed"):
+            start_cycle = state.get("current_cycle") or 1
+            for cycle in range(start_cycle, args.rounds + 1):
+                label = f"cycle {cycle}/{args.rounds}"
+                state["current_cycle"] = cycle
+                _save_state(state)
+
+                _banner(4, total_stages, f"DERIVE ({label})")
+                _mark_stage(state, 4, "running", cycle=cycle)
+                added = _stage_derive(args, round_label=label)
+                _mark_stage(state, 4, "completed", cycle=cycle, added=added)
+
+                _banner(5, total_stages, f"REVIEW ({label})")
+                _mark_stage(state, 5, "running", cycle=cycle)
+                review_result = _stage_review(args, round_label=label)
+                invalid_count = review_result.get("invalid", 0)
+                _mark_stage(state, 5, "completed", cycle=cycle,
+                            reviewed=review_result.get("reviewed", 0),
+                            invalid=invalid_count)
+
+                if invalid_count > 0:
+                    _banner(6, total_stages, f"REPAIR ({label})")
+                    _mark_stage(state, 6, "running", cycle=cycle)
+                    _stage_repair(args, review_result, round_label=label)
+                    _mark_stage(state, 6, "completed", cycle=cycle)
+                else:
+                    _mark_stage(state, 6, "completed", cycle=cycle, skipped=True)
+
+                _banner(7, total_stages, f"DEDUPLICATE ({label})")
+                _mark_stage(state, 7, "running", cycle=cycle)
+                _stage_deduplicate(args, round_label=label)
+                _mark_stage(state, 7, "completed", cycle=cycle)
+
+                if invalid_count == 0 and added == 0:
+                    print(f"\nConverged after {cycle} cycles "
+                          f"(0 invalids, 0 new derivations)", file=sys.stderr)
+                    break
+
+            state["loop_completed"] = True
             _save_state(state)
-
-            _banner(4, total_stages, f"DERIVE ({label})")
-            _mark_stage(state, 4, "running", cycle=cycle)
-            added = _stage_derive(args, round_label=label)
-            _mark_stage(state, 4, "completed", cycle=cycle, added=added)
-
-            _banner(5, total_stages, f"REVIEW ({label})")
-            _mark_stage(state, 5, "running", cycle=cycle)
-            review_result = _stage_review(args, round_label=label)
-            invalid_count = review_result.get("invalid", 0)
-            _mark_stage(state, 5, "completed", cycle=cycle,
-                        reviewed=review_result.get("reviewed", 0),
-                        invalid=invalid_count)
-
-            if invalid_count > 0:
-                _banner(6, total_stages, f"REPAIR ({label})")
-                _mark_stage(state, 6, "running", cycle=cycle)
-                _stage_repair(args, review_result, round_label=label)
-                _mark_stage(state, 6, "completed", cycle=cycle)
-            else:
-                _mark_stage(state, 6, "completed", cycle=cycle, skipped=True)
-
-            _banner(7, total_stages, f"DEDUPLICATE ({label})")
-            _mark_stage(state, 7, "running", cycle=cycle)
-            _stage_deduplicate(args, round_label=label)
-            _mark_stage(state, 7, "completed", cycle=cycle)
-
-            if invalid_count == 0 and added == 0:
-                print(f"\nConverged after {cycle} cycles "
-                      f"(0 invalids, 0 new derivations)", file=sys.stderr)
-                break
+        else:
+            print("Convergence loop already completed, skipping", file=sys.stderr)
 
         # Stage 8: Export
         _banner(8, total_stages, "EXPORT")
