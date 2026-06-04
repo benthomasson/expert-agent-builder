@@ -2,41 +2,64 @@
 
 from unittest.mock import patch
 
-from expert_build.exam import extract_answer, judge_answer, _extract_json
+from expert_build.exam import extract_answer, judge_answer
+from expert_build.llm import extract_json
 
 
-# --- _extract_json ---
+# --- extract_json ---
 
 def test_extract_json_plain():
-    assert _extract_json('{"answer": "b", "explanation": "because"}') == {
+    assert extract_json('{"answer": "b", "explanation": "because"}') == {
         "answer": "b", "explanation": "because"
     }
 
 
 def test_extract_json_with_code_fence():
     response = '```json\n{"answer": "c", "explanation": "reason"}\n```'
-    assert _extract_json(response) == {"answer": "c", "explanation": "reason"}
+    assert extract_json(response) == {"answer": "c", "explanation": "reason"}
 
 
 def test_extract_json_embedded_in_text():
     response = 'Here is my answer:\n{"answer": "a", "explanation": "yes"}\nDone.'
-    result = _extract_json(response)
+    result = extract_json(response)
     assert result["answer"] == "a"
 
 
 def test_extract_json_braces_in_value():
     response = 'Sure: {"answer": "b", "explanation": "use {braces} here"}'
-    result = _extract_json(response)
+    result = extract_json(response)
     assert result["answer"] == "b"
     assert "{braces}" in result["explanation"]
 
 
 def test_extract_json_invalid():
-    assert _extract_json("No JSON here at all") is None
+    assert extract_json("No JSON here at all") is None
 
 
 def test_extract_json_truncated():
-    assert _extract_json('{"answer": "b", "explan') is None
+    assert extract_json('{"answer": "b", "explan') is None
+
+
+def test_extract_json_array():
+    response = '[{"id": "a"}, {"id": "b"}]'
+    result = extract_json(response)
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0]["id"] == "a"
+
+
+def test_extract_json_array_in_text():
+    response = 'Here are the beliefs:\n[{"id": "a", "claim": "test"}]\nDone.'
+    result = extract_json(response)
+    assert isinstance(result, list)
+    assert result[0]["id"] == "a"
+
+
+def test_extract_json_array_with_code_fence():
+    response = '```json\n[{"id": "a"}]\n```'
+    result = extract_json(response)
+    assert isinstance(result, list)
+    assert result[0]["id"] == "a"
 
 
 # --- extract_answer ---

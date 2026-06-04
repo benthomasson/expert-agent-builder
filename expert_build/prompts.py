@@ -66,14 +66,6 @@ SOURCE CODE:
 PROPOSE_BELIEFS = """\
 You are extracting factual claims from study notes to build a belief registry.
 
-For each significant factual claim in the entries below, output a proposed belief \
-in this exact format:
-
-### [ACCEPT/REJECT] <belief-id-in-kebab-case>
-<one-line factual claim>
-- Source: <path to the entry file>
-- Source URL: <url from SOURCE_URL in file header, or "none" if not present>
-
 Rules:
 - Each belief should be a single, testable factual claim
 - Use kebab-case IDs that are descriptive (e.g., rhel9-default-filesystem-xfs)
@@ -87,6 +79,11 @@ Rules:
 ENTRIES:
 
 {entries}
+
+---
+
+Respond with ONLY this JSON array (no other text):
+[{{"id": "<kebab-case-id>", "claim": "<one-line factual claim>", "source": "<path to entry file>", "source_url": "<url from SOURCE_URL in header, or empty string>"}}]
 """
 
 EXAM_ANSWER = """\
@@ -125,13 +122,14 @@ Respond with ONLY this JSON (no other text):
 
 CERT_MATCH = """\
 Given a certification objective and a list of beliefs, determine which beliefs \
-(if any) cover this objective. Return the belief IDs that match, one per line. \
-If none match, return "NONE".
+(if any) cover this objective.
 
 Objective: {objective}
 
 Beliefs:
 {beliefs}
 
-Matching belief IDs (one per line, or NONE):
+Respond with ONLY this JSON (no other text):
+{{"matching_ids": ["belief-id-1", "belief-id-2"]}}
+Use an empty array if none match: {{"matching_ids": []}}
 """

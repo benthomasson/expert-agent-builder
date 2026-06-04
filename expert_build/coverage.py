@@ -6,7 +6,7 @@ from pathlib import Path
 
 from reasons_lib.api import list_nodes
 
-from .llm import check_model_available, invoke_sync
+from .llm import check_model_available, extract_json, invoke_sync, RETRY_JSON
 from .prompts import CERT_MATCH
 
 REASONS_DB = "reasons.db"
@@ -113,9 +113,16 @@ def cmd_cert_coverage(args):
             prompt = CERT_MATCH.format(objective=obj["text"], beliefs=beliefs_text)
             try:
                 result = invoke_sync(prompt, model=args.model, timeout=120)
-                if result.strip().upper() != "NONE":
-                    for line in result.strip().split("\n"):
-                        bid = line.strip().strip("-").strip()
+                data = extract_json(result)
+                if not isinstance(data, dict) or "matching_ids" not in data:
+                    retry_response = invoke_sync(
+                        prompt + "\n\n" + result + "\n\n" + RETRY_JSON,
+                        model=args.model, timeout=120,
+                    )
+                    data = extract_json(retry_response)
+                if isinstance(data, dict) and "matching_ids" in data:
+                    for bid in data["matching_ids"]:
+                        bid = str(bid).strip()
                         if any(b["id"] == bid for b in beliefs):
                             matches.append((bid, 1.0))
             except Exception as e:
