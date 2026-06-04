@@ -372,6 +372,8 @@ def cmd_propose_beliefs(args):
             f.write(f"**Model:** {args.model}\n\n")
 
     total_skipped = 0
+    successful_entries = []
+    appended = output.exists() and output.stat().st_size > 0
     for i, batch_text in enumerate(batches):
         print(f"  Batch {i + 1}/{len(batches)}...")
         existing_context = _build_dedup_context(
@@ -391,7 +393,7 @@ def cmd_propose_beliefs(args):
         skip_until_next = False
         skipped = 0
         for line in lines:
-            m = re.match(r"^### \[?(?:ACCEPT|REJECT)\]? (\S+)", line)
+            m = re.match(r"^### (?:\[ACCEPT/REJECT\]|\[?(?:ACCEPT|REJECT)\]?) (\S+)", line)
             if m:
                 belief_id = m.group(1)
                 if belief_id in existing_ids:
@@ -413,13 +415,14 @@ def cmd_propose_beliefs(args):
             f.write("\n".join(filtered_lines))
             f.write("\n\n")
 
+        # Record this batch's entries as processed
+        successful_entries.extend(Path(p) for p in batch_paths[i])
+        _save_processed(processed_path, successful_entries, processed)
+
     if total_skipped:
         print(f"  Filtered {total_skipped} already-accepted beliefs")
 
-    # Record processed entries
-    _save_processed(processed_path, entries, processed)
-
-    print(f"\nWrote {output}")
+    print(f"\n{'Appended to' if appended else 'Wrote'} {output}")
 
     print("Review the file, mark entries as [ACCEPT] or [REJECT], then run:")
     print("  expert-build accept-beliefs")
