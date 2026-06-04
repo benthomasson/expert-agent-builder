@@ -152,7 +152,15 @@ def main():
         print(f"CLI registration error: {'; '.join(parts)}", file=sys.stderr)
         sys.exit(1)
 
-    commands[args.command](args)
+    try:
+        commands[args.command](args)
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
