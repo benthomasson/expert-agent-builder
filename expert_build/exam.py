@@ -117,10 +117,11 @@ def _extract_json(response: str) -> dict | None:
         return json.loads(text)
     except (json.JSONDecodeError, ValueError):
         pass
-    match = re.search(r"\{[^{}]+\}", text)
-    if match:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
         try:
-            return json.loads(match.group())
+            return json.loads(text[start:end + 1])
         except (json.JSONDecodeError, ValueError):
             pass
     return None
@@ -130,7 +131,7 @@ def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
     """Extract answer from JSON LLM response, retrying on parse failure."""
     data = _extract_json(response)
     if data and "answer" in data:
-        return data["answer"].strip()
+        return str(data["answer"]).strip()
 
     if model and prompt:
         print("    WARN: response not valid JSON, retrying...", file=sys.stderr)
@@ -141,7 +142,7 @@ def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
             )
             data = _extract_json(retry_response)
             if data and "answer" in data:
-                return data["answer"].strip()
+                return str(data["answer"]).strip()
         except Exception:
             pass
 

@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from expert_build.exam import extract_answer, judge_answer, _extract_json
 
 
@@ -24,6 +22,13 @@ def test_extract_json_embedded_in_text():
     response = 'Here is my answer:\n{"answer": "a", "explanation": "yes"}\nDone.'
     result = _extract_json(response)
     assert result["answer"] == "a"
+
+
+def test_extract_json_braces_in_value():
+    response = 'Sure: {"answer": "b", "explanation": "use {braces} here"}'
+    result = _extract_json(response)
+    assert result["answer"] == "b"
+    assert "{braces}" in result["explanation"]
 
 
 def test_extract_json_invalid():
@@ -127,6 +132,23 @@ def test_judge_handles_llm_error():
 
     assert is_correct is False
     assert explanation == "judge error"
+
+
+def test_judge_retry_itself_raises():
+    call_count = 0
+    def side_effect(prompt, model=None, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return "Not JSON"
+        raise RuntimeError("retry timeout")
+
+    with patch("expert_build.exam.invoke_sync", side_effect=side_effect):
+        is_correct, explanation = judge_answer("q", "expected", "got", "test")
+
+    assert is_correct is False
+    assert explanation == "no verdict"
+    assert call_count == 2
 
 
 def test_judge_case_insensitive_verdict():
