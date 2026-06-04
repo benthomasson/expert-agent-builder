@@ -314,11 +314,23 @@ def _stage_export(args):
     print(f"\nFinal: {in_count} IN / {total} total beliefs", file=sys.stderr)
 
 
-def _run_convergence_loop(args, rounds, on_cycle=None):
+def _run_convergence_loop(args, rounds, start_cycle=1, total_rounds=None,
+                          on_stage=None):
     """Run derive -> review -> repair -> dedup until convergence.
+
+    Args:
+        args: namespace with .model, .timeout, .domain, .max_derive_rounds
+        rounds: number of cycles to run
+        start_cycle: cycle number to start from (for labeling)
+        total_rounds: total cycles for labels (defaults to start_cycle + rounds - 1)
+        on_stage: optional callback(cycle, stage_num, event, **kwargs)
+            event is "start" or "end", kwargs has stage-specific data
 
     Returns summary dict with totals across all cycles.
     """
+    if total_rounds is None:
+        total_rounds = start_cycle + rounds - 1
+
     summary = {
         "cycles": 0,
         "total_derived": 0,
@@ -330,32 +342,46 @@ def _run_convergence_loop(args, rounds, on_cycle=None):
         "converged": False,
     }
 
-    for cycle in range(1, rounds + 1):
-        label = f"cycle {cycle}/{rounds}"
-        summary["cycles"] = cycle
+    for i in range(rounds):
+        cycle = start_cycle + i
+        label = f"cycle {cycle}/{total_rounds}"
+        summary["cycles"] = i + 1
 
-        if on_cycle:
-            on_cycle(cycle, "derive_start", None, None)
-
+        if on_stage:
+            on_stage(cycle, 4, "start")
         added = _stage_derive(args, round_label=label)
         summary["total_derived"] += added
+        if on_stage:
+            on_stage(cycle, 4, "end", added=added)
 
+        if on_stage:
+            on_stage(cycle, 5, "start")
         review_result = _stage_review(args, round_label=label)
         invalid_count = review_result.get("invalid", 0)
         summary["total_reviewed"] += review_result.get("reviewed", 0)
         summary["total_invalid"] += invalid_count
+        if on_stage:
+            on_stage(cycle, 5, "end", reviewed=review_result.get("reviewed", 0),
+                     invalid=invalid_count)
 
         repair_result = None
         if invalid_count > 0:
+            if on_stage:
+                on_stage(cycle, 6, "start")
             repair_result = _stage_repair(args, review_result, round_label=label)
             summary["total_linked"] += repair_result.get("linked", 0)
             summary["total_softened"] += repair_result.get("softened", 0)
             summary["total_abandoned"] += repair_result.get("abandoned", 0)
+            if on_stage:
+                on_stage(cycle, 6, "end")
+        elif on_stage:
+            on_stage(cycle, 6, "end", skipped=True)
 
+        if on_stage:
+            on_stage(cycle, 7, "start")
         _stage_deduplicate(args, round_label=label)
-
-        if on_cycle:
-            on_cycle(cycle, "cycle_end", added, review_result)
+        if on_stage:
+            on_stage(cycle, 7, "end")
 
         if invalid_count == 0 and added == 0:
             print(f"\nConverged after {cycle} cycles "
@@ -471,25 +497,25 @@ def cmd_pipeline(args):
             start_cycle = state.get("current_cycle") or 1
             remaining_rounds = args.rounds - start_cycle + 1
 
-            def _pipeline_on_cycle(cycle_num, event, added, review_result):
-                actual_cycle = start_cycle + cycle_num - 1
-                if event == "derive_start":
-                    state["current_cycle"] = actual_cycle
-                    _save_state(state)
-                elif event == "cycle_end":
-                    _mark_stage(state, 4, "completed", cycle=actual_cycle,
-                                added=added or 0)
-                    invalid_count = (review_result.get("invalid", 0)
-                                     if review_result else 0)
-                    _mark_stage(state, 5, "completed", cycle=actual_cycle,
-                                reviewed=(review_result.get("reviewed", 0)
-                                          if review_result else 0),
-                                invalid=invalid_count)
-                    _mark_stage(state, 6, "completed", cycle=actual_cycle)
-                    _mark_stage(state, 7, "completed", cycle=actual_cycle)
+            def _pipeline_on_stage(cycle, stage_num, event, **kwargs):
+                if event == "start":
+                    label = f"cycle {cycle}/{args.rounds}"
+                    if stage_num == 4:
+                        state["current_cycle"] = cycle
+                        _save_state(state)
+                    _banner(stage_num, total_stages,
+                            f"{STAGE_NAMES[stage_num].upper()} ({label})")
+                    _mark_stage(state, stage_num, "running", cycle=cycle)
+                else:
+                    _mark_stage(state, stage_num, "completed",
+                                cycle=cycle, **kwargs)
 
-            _run_convergence_loop(args, remaining_rounds,
-                                  on_cycle=_pipeline_on_cycle)
+            _run_convergence_loop(
+                args, remaining_rounds,
+                start_cycle=start_cycle,
+                total_rounds=args.rounds,
+                on_stage=_pipeline_on_stage,
+            )
 
             state["loop_completed"] = True
             _save_state(state)

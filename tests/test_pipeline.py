@@ -523,21 +523,26 @@ class TestConvergenceLoop:
         assert summary["total_invalid"] == 2
         assert summary["total_softened"] == 2
 
-    def test_on_cycle_callback_called(self, work_dir):
+    def test_on_stage_callback_called(self, work_dir):
         args = make_drr_args(rounds=1)
         review_result = {"reviewed": 1, "invalid": 0, "results": []}
         events = []
 
-        def on_cycle(cycle, event, added, review):
-            events.append((cycle, event))
+        def on_stage(cycle, stage_num, event, **kwargs):
+            events.append((cycle, stage_num, event))
 
         with patch("expert_build.pipeline._stage_derive", return_value=0), \
              patch("expert_build.pipeline._stage_review", return_value=review_result), \
              patch("expert_build.pipeline._stage_deduplicate"):
-            _run_convergence_loop(args, rounds=1, on_cycle=on_cycle)
+            _run_convergence_loop(args, rounds=1, on_stage=on_stage)
 
-        assert (1, "derive_start") in events
-        assert (1, "cycle_end") in events
+        assert (1, 4, "start") in events
+        assert (1, 4, "end") in events
+        assert (1, 5, "start") in events
+        assert (1, 5, "end") in events
+        assert (1, 6, "end") in events
+        assert (1, 7, "start") in events
+        assert (1, 7, "end") in events
 
 
 class TestCmdDeriveReviewRepair:
