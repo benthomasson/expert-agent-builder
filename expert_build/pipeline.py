@@ -2,11 +2,80 @@
 
 import json
 import sys
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 from .llm import check_model_available, invoke_sync
-from .propose import REASONS_DB
+from .propose import PROJECT_DIR, REASONS_DB
+
+STATE_FILE = Path(PROJECT_DIR) / "pipeline-state.json"
+
+STAGE_NAMES = {
+    1: "ingest",
+    2: "summarize",
+    3: "extract",
+    4: "derive",
+    5: "review",
+    6: "repair",
+    7: "deduplicate",
+    8: "export",
+}
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _init_state(args):
+    state = {
+        "started_at": _now(),
+        "updated_at": _now(),
+        "status": "running",
+        "current_stage": None,
+        "current_cycle": None,
+        "args": {
+            "url": getattr(args, "url", None),
+            "model": args.model,
+            "rounds": args.rounds,
+            "domain": getattr(args, "domain", None),
+        },
+        "stages": {
+            f"{n}_{name}": {"status": "pending"}
+            for n, name in STAGE_NAMES.items()
+        },
+    }
+    _save_state(state)
+    return state
+
+
+def _load_state():
+    if not STATE_FILE.exists():
+        return None
+    return json.loads(STATE_FILE.read_text())
+
+
+def _save_state(state):
+    state["updated_at"] = _now()
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+
+
+def _mark_stage(state, stage_num, status, **meta):
+    key = f"{stage_num}_{STAGE_NAMES[stage_num]}"
+    state["stages"][key]["status"] = status
+    if status == "running":
+        state["current_stage"] = stage_num
+    elif status == "completed":
+        state["stages"][key]["completed_at"] = _now()
+    state["stages"][key].update(meta)
+    _save_state(state)
+
+
+def _stage_completed(state, stage_num):
+    key = f"{stage_num}_{STAGE_NAMES[stage_num]}"
+    return state["stages"][key]["status"] == "completed"
 
 
 def _banner(stage_num, total, name):
@@ -249,52 +318,109 @@ def cmd_pipeline(args):
         print(f"Model not available: {args.model}", file=sys.stderr)
         sys.exit(1)
 
+    resume = getattr(args, "resume", False)
+    if resume:
+        state = _load_state()
+        if not state:
+            print("No pipeline state to resume. Run without --resume first.",
+                  file=sys.stderr)
+            sys.exit(1)
+        print(f"Resuming pipeline from state file", file=sys.stderr)
+        state["status"] = "running"
+        _save_state(state)
+    else:
+        state = _init_state(args)
+
     total_stages = 8
     has_sources = args.url or args.pdf
 
-    # Stage 1: Ingest
-    if has_sources:
-        _banner(1, total_stages, "INGEST")
-        _stage_ingest(args)
-    else:
-        print("No --url or --pdf provided, skipping ingest", file=sys.stderr)
+    try:
+        # Stage 1: Ingest
+        if not _stage_completed(state, 1):
+            if has_sources:
+                _banner(1, total_stages, "INGEST")
+                _mark_stage(state, 1, "running")
+                _stage_ingest(args)
+                _mark_stage(state, 1, "completed")
+            else:
+                print("No --url or --pdf provided, skipping ingest", file=sys.stderr)
+                _mark_stage(state, 1, "completed", skipped=True)
+        else:
+            print("Stage 1 (INGEST) already completed, skipping", file=sys.stderr)
 
-    # Stage 2: Summarize
-    _banner(2, total_stages, "SUMMARIZE")
-    _stage_summarize(args)
+        # Stage 2: Summarize
+        if not _stage_completed(state, 2):
+            _banner(2, total_stages, "SUMMARIZE")
+            _mark_stage(state, 2, "running")
+            _stage_summarize(args)
+            _mark_stage(state, 2, "completed")
+        else:
+            print("Stage 2 (SUMMARIZE) already completed, skipping", file=sys.stderr)
 
-    # Stage 3: Extract
-    _banner(3, total_stages, "EXTRACT")
-    should_continue = _stage_extract(args)
-    if not should_continue:
-        return
+        # Stage 3: Extract
+        if not _stage_completed(state, 3):
+            _banner(3, total_stages, "EXTRACT")
+            _mark_stage(state, 3, "running")
+            should_continue = _stage_extract(args)
+            _mark_stage(state, 3, "completed")
+            if not should_continue:
+                state["status"] = "paused"
+                _save_state(state)
+                return
+        else:
+            print("Stage 3 (EXTRACT) already completed, skipping", file=sys.stderr)
 
-    # Stages 4-7: Derive → Review → Repair → Deduplicate (convergence loop)
-    for cycle in range(1, args.rounds + 1):
-        label = f"cycle {cycle}/{args.rounds}"
+        # Stages 4-7: Derive → Review → Repair → Deduplicate (convergence loop)
+        start_cycle = state.get("current_cycle") or 1
+        for cycle in range(start_cycle, args.rounds + 1):
+            label = f"cycle {cycle}/{args.rounds}"
+            state["current_cycle"] = cycle
+            _save_state(state)
 
-        _banner(4, total_stages, f"DERIVE ({label})")
-        added = _stage_derive(args, round_label=label)
+            _banner(4, total_stages, f"DERIVE ({label})")
+            _mark_stage(state, 4, "running", cycle=cycle)
+            added = _stage_derive(args, round_label=label)
+            _mark_stage(state, 4, "completed", cycle=cycle, added=added)
 
-        _banner(5, total_stages, f"REVIEW ({label})")
-        review_result = _stage_review(args, round_label=label)
+            _banner(5, total_stages, f"REVIEW ({label})")
+            _mark_stage(state, 5, "running", cycle=cycle)
+            review_result = _stage_review(args, round_label=label)
+            invalid_count = review_result.get("invalid", 0)
+            _mark_stage(state, 5, "completed", cycle=cycle,
+                        reviewed=review_result.get("reviewed", 0),
+                        invalid=invalid_count)
 
-        invalid_count = review_result.get("invalid", 0)
+            if invalid_count > 0:
+                _banner(6, total_stages, f"REPAIR ({label})")
+                _mark_stage(state, 6, "running", cycle=cycle)
+                _stage_repair(args, review_result, round_label=label)
+                _mark_stage(state, 6, "completed", cycle=cycle)
+            else:
+                _mark_stage(state, 6, "completed", cycle=cycle, skipped=True)
 
-        if invalid_count > 0:
-            _banner(6, total_stages, f"REPAIR ({label})")
-            _stage_repair(args, review_result, round_label=label)
+            _banner(7, total_stages, f"DEDUPLICATE ({label})")
+            _mark_stage(state, 7, "running", cycle=cycle)
+            _stage_deduplicate(args, round_label=label)
+            _mark_stage(state, 7, "completed", cycle=cycle)
 
-        _banner(7, total_stages, f"DEDUPLICATE ({label})")
-        _stage_deduplicate(args, round_label=label)
+            if invalid_count == 0 and added == 0:
+                print(f"\nConverged after {cycle} cycles "
+                      f"(0 invalids, 0 new derivations)", file=sys.stderr)
+                break
 
-        if invalid_count == 0 and added == 0:
-            print(f"\nConverged after {cycle} cycles "
-                  f"(0 invalids, 0 new derivations)", file=sys.stderr)
-            break
+        # Stage 8: Export
+        _banner(8, total_stages, "EXPORT")
+        _mark_stage(state, 8, "running")
+        _stage_export(args)
+        _mark_stage(state, 8, "completed")
 
-    # Stage 8: Export
-    _banner(8, total_stages, "EXPORT")
-    _stage_export(args)
+        state["status"] = "completed"
+        _save_state(state)
+        print("\nPipeline complete.", file=sys.stderr)
 
-    print("\nPipeline complete.", file=sys.stderr)
+    except Exception as e:
+        state["status"] = "failed"
+        state["error"] = str(e)
+        state["error_traceback"] = traceback.format_exc()
+        _save_state(state)
+        raise

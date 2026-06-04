@@ -1,5 +1,6 @@
 """Tests for the pipeline command."""
 
+import json
 import types
 from pathlib import Path
 from unittest.mock import patch
@@ -14,6 +15,8 @@ from expert_build.pipeline import (
     _stage_review,
     _stage_repair,
     _stage_deduplicate,
+    STATE_FILE,
+    _load_state,
 )
 from expert_build.propose import auto_accept_proposals
 
@@ -41,6 +44,7 @@ def make_pipeline_args(**overrides):
         depth=2,
         timeout=600,
         domain="Test domain",
+        resume=False,
     )
     defaults.update(overrides)
     return types.SimpleNamespace(**defaults)
@@ -303,3 +307,100 @@ class TestCmdPipeline:
 
         assert not mock_derive.called
         assert not mock_export.called
+
+
+# --- Pipeline State ---
+
+class TestPipelineState:
+    def test_state_file_created_on_run(self, work_dir):
+        args = make_pipeline_args(rounds=1, url=None, pdf=None)
+        review_result = {"reviewed": 0, "invalid": 0, "results": []}
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract", return_value=True), \
+             patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"), \
+             patch("expert_build.pipeline._stage_export"), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(args)
+
+        state = _load_state()
+        assert state is not None
+        assert state["status"] == "completed"
+        assert state["stages"]["8_export"]["status"] == "completed"
+
+    def test_state_records_failure(self, work_dir):
+        args = make_pipeline_args(url=None, pdf=None)
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize",
+                   side_effect=RuntimeError("LLM exploded")), \
+             patch("expert_build.caffeinate.hold"), \
+             pytest.raises(RuntimeError, match="LLM exploded"):
+            cmd_pipeline(args)
+
+        state = _load_state()
+        assert state["status"] == "failed"
+        assert "LLM exploded" in state["error"]
+        assert state["stages"]["2_summarize"]["status"] == "running"
+
+    def test_resume_skips_completed_stages(self, work_dir, capsys):
+        args = make_pipeline_args(rounds=1, url=None, pdf=None)
+        review_result = {"reviewed": 0, "invalid": 0, "results": []}
+
+        # First run: complete through summarize, then fail at extract
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract",
+                   side_effect=RuntimeError("crash")), \
+             patch("expert_build.caffeinate.hold"), \
+             pytest.raises(RuntimeError):
+            cmd_pipeline(args)
+
+        state = _load_state()
+        assert state["stages"]["1_ingest"]["status"] == "completed"
+        assert state["stages"]["2_summarize"]["status"] == "completed"
+        assert state["stages"]["3_extract"]["status"] == "running"
+
+        # Resume: should skip ingest and summarize
+        resume_args = make_pipeline_args(rounds=1, url=None, pdf=None, resume=True)
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize") as mock_summarize, \
+             patch("expert_build.pipeline._stage_extract", return_value=True), \
+             patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"), \
+             patch("expert_build.pipeline._stage_export"), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(resume_args)
+
+        assert not mock_summarize.called
+        captured = capsys.readouterr()
+        assert "already completed, skipping" in captured.err
+
+        state = _load_state()
+        assert state["status"] == "completed"
+
+    def test_resume_without_state_exits(self, work_dir):
+        args = make_pipeline_args(resume=True)
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.caffeinate.hold"), \
+             pytest.raises(SystemExit):
+            cmd_pipeline(args)
+
+    def test_no_auto_accept_sets_paused(self, work_dir):
+        args = make_pipeline_args(no_auto_accept=True, url=None, pdf=None)
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract", return_value=False), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(args)
+
+        state = _load_state()
+        assert state["status"] == "paused"
+        assert state["stages"]["3_extract"]["status"] == "completed"
