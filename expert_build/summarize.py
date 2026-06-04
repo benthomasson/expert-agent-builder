@@ -1,8 +1,7 @@
 """Summarize source documents into entries using an LLM."""
 
-import re
-import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 from .llm import check_model_available, invoke_sync
@@ -63,6 +62,10 @@ def cmd_summarize(args):
                 for line in frontmatter.splitlines():
                     if line.startswith("source_url:"):
                         source_url = line.split(":", 1)[1].strip()
+                    elif line.startswith("source:"):
+                        val = line.split(":", 1)[1].strip()
+                        if not source_url and val.startswith(("http://", "https://")):
+                            source_url = val
                     elif line.startswith("source_id:"):
                         source_id = line.split(":", 1)[1].strip()
                 content = content[end + 3:].strip()
@@ -91,46 +94,23 @@ def cmd_summarize(args):
             print(f"  ERROR: {e}")
             continue
 
-        # Extract a title from the summary or source filename
-        title_match = re.search(r"^#+ (.+)$", summary, re.MULTILINE)
-        title = title_match.group(1) if title_match else source_path.stem.replace("-", " ").title()
         topic = source_path.stem
 
-        # Create entry via entry CLI
-        entry_path = None
-        try:
-            result = subprocess.run(
-                ["entry", "create", topic, title, "--content", summary],
-                capture_output=True, text=True,
-            )
-            if result.returncode == 0:
-                entry_path = result.stdout.strip().replace("Created ", "")
-                print(f"  -> {result.stdout.strip()}")
-            else:
-                # Try alternative invocation
-                result = subprocess.run(
-                    ["entry", "create", topic, title],
-                    input=summary,
-                    capture_output=True, text=True,
-                )
-                if result.returncode == 0:
-                    entry_path = result.stdout.strip().replace("Created ", "")
-                    print(f"  -> {result.stdout.strip()}")
-                else:
-                    print(f"  WARN: entry create failed: {result.stderr.strip()}")
-        except FileNotFoundError:
-            print("  ERROR: entry CLI not found. Install with: uv tool install entry")
-            sys.exit(1)
+        # Write entry directly with provenance frontmatter
+        today = date.today()
+        entry_dir = Path("entries") / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
+        entry_dir.mkdir(parents=True, exist_ok=True)
+        entry_path = entry_dir / f"{topic}.md"
 
-        # Prepend source provenance frontmatter to the entry file
-        if entry_path and source_url:
-            ep = Path(entry_path)
-            if ep.exists():
-                fm = f"---\nsource_url: {source_url}\n"
-                if source_id:
-                    fm += f"source_id: {source_id}\n"
-                fm += "---\n\n"
-                ep.write_text(fm + ep.read_text())
+        fm_lines = [f"source: {source_path}"]
+        if source_url:
+            fm_lines.append(f"source_url: {source_url}")
+        if source_id:
+            fm_lines.append(f"source_id: {source_id}")
+        frontmatter = "---\n" + "\n".join(fm_lines) + "\n---\n\n"
+
+        entry_path.write_text(frontmatter + summary + "\n")
+        print(f"  -> Created {entry_path}")
 
         # Record as done
         with manifest.open("a") as f:

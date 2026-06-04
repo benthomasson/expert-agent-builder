@@ -198,6 +198,75 @@ def test_json_with_code_fence(entries_dir, work_dir):
     assert "fenced-belief" in content
 
 
+def test_source_url_extracted_from_entry_frontmatter(entries_dir, work_dir):
+    """source_url from entry frontmatter is passed in batch header."""
+    fm = "---\nsource_url: https://example.com/doc\n---\n\n# Entry\nContent"
+    (entries_dir / "entry0.md").write_text(fm)
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=5)
+
+    captured_prompt = None
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        nonlocal captured_prompt
+        captured_prompt = prompt
+        return _json_beliefs(("test-belief", "A belief."))
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    assert "SOURCE_URL: https://example.com/doc" in captured_prompt
+
+
+def test_source_key_url_extracted_from_entry_frontmatter(entries_dir, work_dir):
+    """source: with URL value is used as SOURCE_URL in batch header."""
+    fm = "---\nsource: https://example.com/page\n---\n\n# Entry\nContent"
+    (entries_dir / "entry0.md").write_text(fm)
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=5)
+
+    captured_prompt = None
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        nonlocal captured_prompt
+        captured_prompt = prompt
+        return _json_beliefs(("test-belief", "A belief."))
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    assert "SOURCE_URL: https://example.com/page" in captured_prompt
+
+
+def test_source_key_local_path_not_used_as_url(entries_dir, work_dir):
+    """source: with local file path is NOT used as SOURCE_URL."""
+    fm = "---\nsource: sources/doc.md\n---\n\n# Entry\nContent"
+    (entries_dir / "entry0.md").write_text(fm)
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=5)
+
+    captured_prompt = None
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        nonlocal captured_prompt
+        captured_prompt = prompt
+        return _json_beliefs(("test-belief", "A belief."))
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    assert "| SOURCE_URL:" not in captured_prompt
+
+
 def test_appends_to_existing_output_file(entries_dir, work_dir):
     """When output file already exists, new proposals are appended."""
     (entries_dir / "entry0.md").write_text("# Entry\nContent")

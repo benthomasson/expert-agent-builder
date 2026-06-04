@@ -2,7 +2,7 @@
 
 import types
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -33,6 +33,13 @@ def make_args(input_dir, model="test-model", limit=None):
     return types.SimpleNamespace(input_dir=str(input_dir), model=model, limit=limit)
 
 
+def _find_entry(work_dir):
+    """Find the generated entry file under entries/."""
+    entries = list((work_dir / "entries").rglob("*.md"))
+    assert len(entries) == 1, f"Expected 1 entry, found {len(entries)}: {entries}"
+    return entries[0]
+
+
 # --- File discovery tests ---
 
 def test_discovers_md_files(source_dir, work_dir):
@@ -40,12 +47,11 @@ def test_discovers_md_files(source_dir, work_dir):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Topic Title\nSummary"), \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/doc.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Topic Title\nSummary"):
         cmd_summarize(args)
 
-    assert mock_run.called
+    entry = _find_entry(work_dir)
+    assert "Summary" in entry.read_text()
 
 
 def test_discovers_py_files(source_dir, work_dir):
@@ -53,12 +59,11 @@ def test_discovers_py_files(source_dir, work_dir):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Module\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/module.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Module\nSummary"):
         cmd_summarize(args)
 
-    assert mock_llm.called
+    entry = _find_entry(work_dir)
+    assert "Summary" in entry.read_text()
 
 
 def test_discovers_both_md_and_py(source_dir, work_dir):
@@ -66,14 +71,13 @@ def test_discovers_both_md_and_py(source_dir, work_dir):
     (source_dir / "beta.py").write_text("x = 1")
     args = make_args(source_dir)
 
-    calls = []
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/x.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm:
         cmd_summarize(args)
 
     assert mock_llm.call_count == 2
+    entries = list((work_dir / "entries").rglob("*.md"))
+    assert len(entries) == 2
 
 
 def test_ignores_other_extensions(source_dir, work_dir):
@@ -95,9 +99,7 @@ def test_uses_summarize_code_for_py(source_dir, work_dir):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Module\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/module.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Module\nSummary") as mock_llm:
         cmd_summarize(args)
 
     prompt = mock_llm.call_args[0][0]
@@ -109,9 +111,7 @@ def test_uses_summarize_for_md(source_dir, work_dir):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Doc Title\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/doc.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Doc Title\nSummary") as mock_llm:
         cmd_summarize(args)
 
     prompt = mock_llm.call_args[0][0]
@@ -125,9 +125,7 @@ def test_truncation_warning_for_large_file(source_dir, work_dir, capsys):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Big Doc\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/big.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Big Doc\nSummary"):
         cmd_summarize(args)
 
     captured = capsys.readouterr()
@@ -140,9 +138,7 @@ def test_truncation_content_is_capped(source_dir, work_dir):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Big\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/big.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Big\nSummary") as mock_llm:
         cmd_summarize(args)
 
     prompt = mock_llm.call_args[0][0]
@@ -155,9 +151,7 @@ def test_no_truncation_warning_for_small_file(source_dir, work_dir, capsys):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Small\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/small.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Small\nSummary"):
         cmd_summarize(args)
 
     captured = capsys.readouterr()
@@ -184,9 +178,7 @@ def test_manifest_records_processed_file(source_dir, work_dir):
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary"), \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/doc.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary"):
         cmd_summarize(args)
 
     manifest = work_dir / ".summarized"
@@ -197,14 +189,26 @@ def test_manifest_records_processed_file(source_dir, work_dir):
 # --- Frontmatter stripping tests ---
 
 def test_strips_frontmatter_before_summarizing(source_dir, work_dir):
+    content = "---\nsource: https://example.com\n---\n\nActual content here"
+    (source_dir / "doc.md").write_text(content)
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm:
+        cmd_summarize(args)
+
+    prompt = mock_llm.call_args[0][0]
+    assert "source:" not in prompt
+    assert "Actual content here" in prompt
+
+
+def test_strips_source_url_frontmatter(source_dir, work_dir):
     content = "---\nsource_url: https://example.com\n---\n\nActual content here"
     (source_dir / "doc.md").write_text(content)
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
-         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="Created entries/doc.md", stderr="")
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm:
         cmd_summarize(args)
 
     prompt = mock_llm.call_args[0][0]
@@ -213,7 +217,7 @@ def test_strips_frontmatter_before_summarizing(source_dir, work_dir):
 
 
 def test_skips_empty_content_after_frontmatter(source_dir, work_dir, capsys):
-    (source_dir / "empty.md").write_text("---\nsource_url: https://example.com\n---\n\n")
+    (source_dir / "empty.md").write_text("---\nsource: https://example.com\n---\n\n")
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
@@ -223,6 +227,83 @@ def test_skips_empty_content_after_frontmatter(source_dir, work_dir, capsys):
     assert not mock_llm.called
     captured = capsys.readouterr()
     assert "SKIP" in captured.out
+
+
+# --- Provenance frontmatter tests ---
+
+def test_entry_has_source_frontmatter(source_dir, work_dir):
+    """Generated entry includes source path in frontmatter."""
+    (source_dir / "doc.md").write_text("# Hello\nContent")
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary"):
+        cmd_summarize(args)
+
+    entry = _find_entry(work_dir)
+    content = entry.read_text()
+    assert content.startswith("---\n")
+    assert f"source: {source_dir}/doc.md" in content
+
+
+def test_entry_has_source_url_from_fetch_frontmatter(source_dir, work_dir):
+    """source: URL from fetch-docs frontmatter propagates as source_url."""
+    fm = "---\nsource: https://example.com/docs/page\nfetched: 2026-06-04\n---\n\nDoc content"
+    (source_dir / "page.md").write_text(fm)
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Page\nSummary"):
+        cmd_summarize(args)
+
+    entry = _find_entry(work_dir)
+    content = entry.read_text()
+    assert "source_url: https://example.com/docs/page" in content
+
+
+def test_entry_has_source_id_when_present(source_dir, work_dir):
+    """source_id propagates from source frontmatter to entry."""
+    fm = "---\nsource_url: https://example.com\nsource_id: abc123\n---\n\nContent"
+    (source_dir / "doc.md").write_text(fm)
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary"):
+        cmd_summarize(args)
+
+    entry = _find_entry(work_dir)
+    content = entry.read_text()
+    assert "source_url: https://example.com" in content
+    assert "source_id: abc123" in content
+
+
+def test_entry_contains_llm_summary(source_dir, work_dir):
+    """The LLM summary is written as the entry body."""
+    (source_dir / "doc.md").write_text("# Hello\nContent")
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## My Title\nDetailed summary here"):
+        cmd_summarize(args)
+
+    entry = _find_entry(work_dir)
+    content = entry.read_text()
+    assert "Detailed summary here" in content
+
+
+def test_entry_directory_structure(source_dir, work_dir):
+    """Entries are written to entries/YYYY/MM/DD/topic.md."""
+    (source_dir / "my-topic.md").write_text("# Topic\nContent")
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary"):
+        cmd_summarize(args)
+
+    entry = _find_entry(work_dir)
+    assert entry.name == "my-topic.md"
+    parts = entry.relative_to(work_dir).parts
+    assert parts[0] == "entries"
 
 
 # --- Prompt template tests ---
