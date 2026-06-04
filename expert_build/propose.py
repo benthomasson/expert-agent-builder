@@ -355,7 +355,8 @@ def cmd_propose_beliefs(args):
     output = Path(args.output)
 
     # Write header before first batch if starting a new file
-    if not (output.exists() and output.stat().st_size > 0):
+    appended = output.exists() and output.stat().st_size > 0
+    if not appended:
         with output.open("w") as f:
             f.write("# Proposed Beliefs\n\n")
             f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
@@ -373,7 +374,6 @@ def cmd_propose_beliefs(args):
 
     total_skipped = 0
     successful_entries = []
-    appended = output.exists() and output.stat().st_size > 0
     for i, batch_text in enumerate(batches):
         print(f"  Batch {i + 1}/{len(batches)}...")
         existing_context = _build_dedup_context(
