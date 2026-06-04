@@ -146,9 +146,9 @@ def main():
         missing_parser = command_names - subparser_names
         parts = []
         if missing_dispatch:
-            parts.append(f"subcommands without dispatch: {missing_dispatch}")
+            parts.append(f"subcommands without dispatch: {sorted(missing_dispatch)}")
         if missing_parser:
-            parts.append(f"dispatch keys without subcommand: {missing_parser}")
+            parts.append(f"dispatch keys without subcommand: {sorted(missing_parser)}")
         print(f"CLI registration error: {'; '.join(parts)}", file=sys.stderr)
         sys.exit(1)
 
