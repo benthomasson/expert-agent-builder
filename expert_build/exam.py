@@ -102,26 +102,66 @@ def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
     return "\n".join(beliefs)
 
 
-def extract_answer(response: str) -> str:
-    """Extract the answer from LLM response."""
-    # Look for ANSWER: line
+RETRY_ANSWER = "Your response was not in the expected format. Reply with ONLY:\nANSWER: <your answer>\nEXPLANATION: <one paragraph>"
+
+RETRY_VERDICT = "Your response was not in the expected format. Reply with ONLY:\nVERDICT: CORRECT or WRONG\nEXPLANATION: <one sentence>"
+
+
+def _parse_answer(response: str) -> str | None:
+    """Parse ANSWER: line from response. Returns None if not found."""
     match = re.search(r"ANSWER:\s*(.+)", response, re.IGNORECASE)
     if match:
         ans = match.group(1).strip()
-        # If it's a letter choice, extract just the letter
         letter_match = re.match(r"([a-d])[.):\s]", ans, re.IGNORECASE)
         if letter_match:
             return letter_match.group(1).lower()
         return ans
 
-    # Fallback: look for a single letter on its own
     lines = response.strip().split("\n")
     for line in lines:
         line = line.strip()
         if re.match(r"^[a-d]$", line, re.IGNORECASE):
             return line.lower()
 
+    return None
+
+
+def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
+    """Extract the answer from LLM response, retrying on parse failure."""
+    ans = _parse_answer(response)
+    if ans is not None:
+        return ans
+
+    if model and prompt:
+        print("    WARN: answer not in expected format, retrying...",
+              file=sys.stderr)
+        try:
+            retry_response = invoke_sync(
+                prompt + "\n\n" + response + "\n\n" + RETRY_ANSWER,
+                model=model, timeout=60,
+            )
+            ans = _parse_answer(retry_response)
+            if ans is not None:
+                return ans
+        except Exception:
+            pass
+
+    print("    WARN: could not parse answer format", file=sys.stderr)
     return response.strip()[:100]
+
+
+def _parse_verdict(response: str) -> tuple[bool, str] | None:
+    """Parse VERDICT: line from response. Returns None if not found."""
+    verdict_match = re.search(r"VERDICT:\s*(CORRECT|WRONG)", response, re.IGNORECASE)
+    if not verdict_match:
+        return None
+
+    is_correct = verdict_match.group(1).upper() == "CORRECT"
+    explanation = ""
+    exp_match = re.search(r"EXPLANATION:\s*(.+)", response, re.IGNORECASE)
+    if exp_match:
+        explanation = exp_match.group(1).strip()
+    return is_correct, explanation
 
 
 def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bool, str]:
@@ -132,16 +172,25 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
     except Exception:
         return False, "judge error"
 
-    verdict_match = re.search(r"VERDICT:\s*(CORRECT|WRONG)", response, re.IGNORECASE)
-    if not verdict_match:
-        return False, "no verdict"
+    result = _parse_verdict(response)
+    if result is not None:
+        return result
 
-    is_correct = verdict_match.group(1).upper() == "CORRECT"
-    explanation = ""
-    exp_match = re.search(r"EXPLANATION:\s*(.+)", response, re.IGNORECASE)
-    if exp_match:
-        explanation = exp_match.group(1).strip()
-    return is_correct, explanation
+    print("    WARN: verdict not in expected format, retrying...",
+          file=sys.stderr)
+    try:
+        retry_response = invoke_sync(
+            prompt + "\n\n" + response + "\n\n" + RETRY_VERDICT,
+            model=model, timeout=60,
+        )
+        result = _parse_verdict(retry_response)
+        if result is not None:
+            return result
+    except Exception:
+        pass
+
+    print("    WARN: could not parse verdict format", file=sys.stderr)
+    return False, "no verdict"
 
 
 def cmd_exam(args):
@@ -194,7 +243,7 @@ def cmd_exam(args):
             results.append({"question": q, "status": "ERROR", "error": str(e)})
             continue
 
-        answer = extract_answer(response)
+        answer = extract_answer(response, model=args.model, prompt=prompt)
         expected = q["correct"].strip().lower()
         use_judge = not getattr(args, 'no_judge', False)
 
