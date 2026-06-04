@@ -424,10 +424,13 @@ def cmd_pipeline(args):
             print("Convergence loop already completed, skipping", file=sys.stderr)
 
         # Stage 8: Export
-        _banner(8, total_stages, "EXPORT")
-        _mark_stage(state, 8, "running")
-        _stage_export(args)
-        _mark_stage(state, 8, "completed")
+        if not _stage_completed(state, 8):
+            _banner(8, total_stages, "EXPORT")
+            _mark_stage(state, 8, "running")
+            _stage_export(args)
+            _mark_stage(state, 8, "completed")
+        else:
+            print("Stage 8 (EXPORT) already completed, skipping", file=sys.stderr)
 
         state["status"] = "completed"
         _save_state(state)

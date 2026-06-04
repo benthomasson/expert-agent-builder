@@ -1,6 +1,5 @@
 """Tests for the pipeline command."""
 
-import json
 import types
 from pathlib import Path
 from unittest.mock import patch
@@ -16,7 +15,6 @@ from expert_build.pipeline import (
     _stage_repair,
     _stage_deduplicate,
     _load_state,
-    _save_state,
     STATE_FILE,
 )
 from expert_build.propose import auto_accept_proposals
