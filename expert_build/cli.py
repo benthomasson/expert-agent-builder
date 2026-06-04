@@ -108,6 +108,8 @@ def main():
     pipe_p.add_argument("--timeout", type=int, default=600,
                         help="LLM timeout in seconds (default: 600)")
     pipe_p.add_argument("--domain", help="Domain description for derive context")
+    pipe_p.add_argument("--resume", action="store_true",
+                        help="Resume from last saved pipeline state")
 
     # -- status --
     sub.add_parser("status", help="Show pipeline progress")
