@@ -160,8 +160,8 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
 
     data = _extract_json(response)
     if data and "verdict" in data:
-        is_correct = data["verdict"].strip().upper() == "CORRECT"
-        return is_correct, data.get("explanation", "")
+        is_correct = str(data["verdict"]).strip().upper() == "CORRECT"
+        return is_correct, str(data.get("explanation", "")).strip()
 
     print("    WARN: verdict not valid JSON, retrying...", file=sys.stderr)
     try:
