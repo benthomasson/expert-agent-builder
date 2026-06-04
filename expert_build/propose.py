@@ -332,6 +332,9 @@ def cmd_propose_beliefs(args):
                 for line in content[3:end].splitlines():
                     if line.startswith("source_url:"):
                         source_url = line.split(":", 1)[1].strip()
+                    elif line.startswith("source:"):
+                        if not source_url:
+                            source_url = line.split(":", 1)[1].strip()
         header = f"--- FILE: {entry_path}"
         if source_url:
             header += f" | SOURCE_URL: {source_url}"
