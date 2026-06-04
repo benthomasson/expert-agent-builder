@@ -333,8 +333,9 @@ def cmd_propose_beliefs(args):
                     if line.startswith("source_url:"):
                         source_url = line.split(":", 1)[1].strip()
                     elif line.startswith("source:"):
-                        if not source_url:
-                            source_url = line.split(":", 1)[1].strip()
+                        val = line.split(":", 1)[1].strip()
+                        if not source_url and val.startswith(("http://", "https://")):
+                            source_url = val
         header = f"--- FILE: {entry_path}"
         if source_url:
             header += f" | SOURCE_URL: {source_url}"
