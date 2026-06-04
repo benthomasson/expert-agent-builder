@@ -1,6 +1,5 @@
 """Summarize source documents into entries using an LLM."""
 
-import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -64,8 +63,9 @@ def cmd_summarize(args):
                     if line.startswith("source_url:"):
                         source_url = line.split(":", 1)[1].strip()
                     elif line.startswith("source:"):
-                        if not source_url:
-                            source_url = line.split(":", 1)[1].strip()
+                        val = line.split(":", 1)[1].strip()
+                        if not source_url and val.startswith(("http://", "https://")):
+                            source_url = val
                     elif line.startswith("source_id:"):
                         source_id = line.split(":", 1)[1].strip()
                 content = content[end + 3:].strip()
@@ -94,9 +94,6 @@ def cmd_summarize(args):
             print(f"  ERROR: {e}")
             continue
 
-        # Extract a title from the summary or source filename
-        title_match = re.search(r"^#+ (.+)$", summary, re.MULTILINE)
-        title = title_match.group(1) if title_match else source_path.stem.replace("-", " ").title()
         topic = source_path.stem
 
         # Write entry directly with provenance frontmatter
