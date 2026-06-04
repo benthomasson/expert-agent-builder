@@ -15,8 +15,9 @@ from expert_build.pipeline import (
     _stage_review,
     _stage_repair,
     _stage_deduplicate,
-    STATE_FILE,
     _load_state,
+    _save_state,
+    STATE_FILE,
 )
 from expert_build.propose import auto_accept_proposals
 
@@ -404,3 +405,43 @@ class TestPipelineState:
         state = _load_state()
         assert state["status"] == "paused"
         assert state["stages"]["3_extract"]["status"] == "completed"
+
+    def test_resume_completed_pipeline_returns_early(self, work_dir, capsys):
+        """Resuming an already-completed pipeline does nothing."""
+        args = make_pipeline_args(rounds=1, url=None, pdf=None)
+        review_result = {"reviewed": 0, "invalid": 0, "results": []}
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_summarize"), \
+             patch("expert_build.pipeline._stage_extract", return_value=True), \
+             patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"), \
+             patch("expert_build.pipeline._stage_export"), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(args)
+
+        state = _load_state()
+        assert state["status"] == "completed"
+
+        # Now resume — should return early
+        resume_args = make_pipeline_args(resume=True)
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_export") as mock_export, \
+             patch("expert_build.caffeinate.hold"):
+            cmd_pipeline(resume_args)
+
+        assert not mock_export.called
+        captured = capsys.readouterr()
+        assert "already completed" in captured.err
+
+    def test_corrupt_state_file_handled(self, work_dir):
+        """Corrupt state file is treated as missing."""
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text("{truncated")
+
+        args = make_pipeline_args(resume=True)
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.caffeinate.hold"), \
+             pytest.raises(SystemExit):
+            cmd_pipeline(args)

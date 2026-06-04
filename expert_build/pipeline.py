@@ -53,7 +53,12 @@ def _init_state(args):
 def _load_state():
     if not STATE_FILE.exists():
         return None
-    return json.loads(STATE_FILE.read_text())
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except (json.JSONDecodeError, ValueError):
+        print(f"WARNING: corrupt state file {STATE_FILE}, ignoring",
+              file=sys.stderr)
+        return None
 
 
 def _save_state(state):
@@ -325,6 +330,10 @@ def cmd_pipeline(args):
             print("No pipeline state to resume. Run without --resume first.",
                   file=sys.stderr)
             sys.exit(1)
+        if state["status"] == "completed":
+            print("Pipeline already completed. Run without --resume to start fresh.",
+                  file=sys.stderr)
+            return
         print(f"Resuming pipeline from state file", file=sys.stderr)
         state["status"] = "running"
         _save_state(state)
