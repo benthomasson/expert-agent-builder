@@ -349,7 +349,29 @@ def cmd_propose_beliefs(args):
 
     print(f"Processing {len(batches)} batches (batch size: {args.batch_size})...")
 
-    all_proposals = []
+    source_desc = (", ".join(str(e) for e in entries)
+                   if has_entry_flag
+                   else f"{len(entries)} entries from {input_dir}/")
+    output = Path(args.output)
+
+    # Write header before first batch if starting a new file
+    if not (output.exists() and output.stat().st_size > 0):
+        with output.open("w") as f:
+            f.write("# Proposed Beliefs\n\n")
+            f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
+            f.write("Then run: `expert-build accept-beliefs`\n\n")
+            f.write("---\n\n")
+            f.write(f"**Generated:** {date.today().isoformat()}\n")
+            f.write(f"**Source:** {source_desc}\n")
+            f.write(f"**Model:** {args.model}\n\n")
+    else:
+        with output.open("a") as f:
+            f.write(f"\n---\n\n")
+            f.write(f"**Generated:** {date.today().isoformat()}\n")
+            f.write(f"**Source:** {source_desc}\n")
+            f.write(f"**Model:** {args.model}\n\n")
+
+    total_skipped = 0
     for i, batch_text in enumerate(batches):
         print(f"  Batch {i + 1}/{len(batches)}...")
         existing_context = _build_dedup_context(
@@ -359,18 +381,15 @@ def cmd_propose_beliefs(args):
         prompt = PROPOSE_BELIEFS.format(entries=batch_text) + existing_context
         try:
             result = invoke_sync(prompt, model=args.model, timeout=600)
-            all_proposals.append(result)
         except Exception as e:
             print(f"  ERROR: {e}")
             continue
 
-    # Filter out proposals whose IDs already exist
-    filtered_proposals = []
-    skipped = 0
-    for proposal in all_proposals:
-        lines = proposal.split("\n")
+        # Filter out proposals whose IDs already exist
+        lines = result.split("\n")
         filtered_lines = []
         skip_until_next = False
+        skipped = 0
         for line in lines:
             m = re.match(r"^### \[?(?:ACCEPT|REJECT)\]? (\S+)", line)
             if m:
@@ -387,42 +406,20 @@ def cmd_propose_beliefs(args):
                     filtered_lines.append(line)
                 continue
             filtered_lines.append(line)
-        filtered_proposals.append("\n".join(filtered_lines))
+        total_skipped += skipped
 
-    if skipped:
-        print(f"  Filtered {skipped} already-accepted beliefs")
+        # Write this batch's proposals immediately
+        with output.open("a") as f:
+            f.write("\n".join(filtered_lines))
+            f.write("\n\n")
+
+    if total_skipped:
+        print(f"  Filtered {total_skipped} already-accepted beliefs")
 
     # Record processed entries
     _save_processed(processed_path, entries, processed)
 
-    # Write proposals file (append if it already exists)
-    source_desc = (", ".join(str(e) for e in entries)
-                   if has_entry_flag
-                   else f"{len(entries)} entries from {input_dir}/")
-    output = Path(args.output)
-    if output.exists() and output.stat().st_size > 0:
-        with output.open("a") as f:
-            f.write(f"\n---\n\n")
-            f.write(f"**Generated:** {date.today().isoformat()}\n")
-            f.write(f"**Source:** {source_desc}\n")
-            f.write(f"**Model:** {args.model}\n\n")
-            for proposal in filtered_proposals:
-                f.write(proposal)
-                f.write("\n\n")
-        print(f"\nAppended to {output}")
-    else:
-        with output.open("w") as f:
-            f.write("# Proposed Beliefs\n\n")
-            f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
-            f.write("Then run: `expert-build accept-beliefs`\n\n")
-            f.write("---\n\n")
-            f.write(f"**Generated:** {date.today().isoformat()}\n")
-            f.write(f"**Source:** {source_desc}\n")
-            f.write(f"**Model:** {args.model}\n\n")
-            for proposal in filtered_proposals:
-                f.write(proposal)
-                f.write("\n\n")
-        print(f"\nWrote {output}")
+    print(f"\nWrote {output}")
 
     print("Review the file, mark entries as [ACCEPT] or [REJECT], then run:")
     print("  expert-build accept-beliefs")
