@@ -1,6 +1,7 @@
 """Model invocation for expert agent builder."""
 
 import asyncio
+import json
 import os
 import shutil
 
@@ -56,3 +57,36 @@ async def invoke(prompt: str, model: str = "claude", timeout: int = DEFAULT_TIME
 def invoke_sync(prompt: str, model: str = "claude", timeout: int = DEFAULT_TIMEOUT) -> str:
     """Synchronous wrapper for invoke."""
     return asyncio.run(invoke(prompt, model, timeout))
+
+
+RETRY_JSON = "Your response was not valid JSON. Respond with ONLY the JSON object, no other text."
+
+
+def extract_json(response: str) -> dict | list | None:
+    """Extract a JSON object or array from an LLM response."""
+    text = response.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    start = text.find("{")
+    start_arr = text.find("[")
+    if start_arr != -1 and (start == -1 or start_arr < start):
+        end = text.rfind("]")
+        if end > start_arr:
+            try:
+                return json.loads(text[start_arr:end + 1])
+            except (json.JSONDecodeError, ValueError):
+                pass
+    if start != -1:
+        end = text.rfind("}")
+        if end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return None

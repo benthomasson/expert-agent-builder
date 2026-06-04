@@ -1,4 +1,4 @@
-"""Tests for expert_build.propose — incremental batch writing."""
+"""Tests for expert_build.propose — JSON belief parsing and incremental batch writing."""
 
 import json
 import types
@@ -36,6 +36,14 @@ def make_args(input_dir, output="proposed-beliefs.md", batch_size=2, model="test
     )
 
 
+def _json_beliefs(*beliefs):
+    """Helper to build a JSON response from (id, claim) tuples."""
+    return json.dumps([
+        {"id": b[0], "claim": b[1], "source": "entry.md", "source_url": ""}
+        for b in beliefs
+    ])
+
+
 def test_proposals_written_after_each_batch(entries_dir, work_dir):
     """Proposals from completed batches survive a crash in a later batch."""
     for i in range(4):
@@ -50,7 +58,7 @@ def test_proposals_written_after_each_batch(entries_dir, work_dir):
         call_count += 1
         if call_count == 2:
             raise RuntimeError("simulated crash")
-        return f"### [ACCEPT/REJECT] belief-from-batch-{call_count}\nA belief.\n"
+        return _json_beliefs(("belief-from-batch-1", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
          patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
@@ -74,7 +82,7 @@ def test_all_batches_written_on_success(entries_dir, work_dir):
     def invoke_side_effect(prompt, model=None, timeout=None):
         nonlocal call_count
         call_count += 1
-        return f"### [ACCEPT/REJECT] belief-{call_count}\nA belief.\n"
+        return _json_beliefs((f"belief-{call_count}", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
          patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
@@ -96,9 +104,9 @@ def test_existing_beliefs_filtered_per_batch(entries_dir, work_dir):
     existing = [{"id": "already-exists", "text": "old belief", "source": ""}]
 
     def invoke_side_effect(prompt, model=None, timeout=None):
-        return (
-            "### [ACCEPT] already-exists\nDuplicate.\n\n"
-            "### [ACCEPT] new-belief\nFresh.\n"
+        return _json_beliefs(
+            ("already-exists", "Duplicate."),
+            ("new-belief", "Fresh."),
         )
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
@@ -126,7 +134,7 @@ def test_failed_batch_entries_not_marked_processed(entries_dir, work_dir):
         call_count += 1
         if call_count == 2:
             raise RuntimeError("simulated crash")
-        return f"### [ACCEPT/REJECT] belief-{call_count}\nA belief.\n"
+        return _json_beliefs((f"belief-{call_count}", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
          patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
@@ -144,30 +152,50 @@ def test_failed_batch_entries_not_marked_processed(entries_dir, work_dir):
     assert not any("entry3" in k for k in processed)
 
 
-def test_filter_regex_matches_accept_reject_placeholder(entries_dir, work_dir):
-    """The dedup filter handles [ACCEPT/REJECT] placeholder from LLM output."""
+def test_json_retry_on_bad_response(entries_dir, work_dir):
+    """When LLM returns non-JSON, retry and parse the retry response."""
     (entries_dir / "entry0.md").write_text("# Entry\nContent")
 
     output = work_dir / "proposed-beliefs.md"
     args = make_args(entries_dir, output=str(output), batch_size=5)
 
-    existing = [{"id": "old-belief", "text": "existing", "source": ""}]
-
+    call_count = 0
     def invoke_side_effect(prompt, model=None, timeout=None):
-        return (
-            "### [ACCEPT/REJECT] old-belief\nDuplicate.\n\n"
-            "### [ACCEPT/REJECT] new-belief\nFresh.\n"
-        )
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return "Here are some beliefs about the code..."
+        return _json_beliefs(("retried-belief", "A belief from retry."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
          patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
-         patch("expert_build.propose._load_existing_beliefs", return_value=existing), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
 
     content = output.read_text()
-    assert "new-belief" in content
-    assert "old-belief" not in content
+    assert "retried-belief" in content
+    assert call_count == 2
+
+
+def test_json_with_code_fence(entries_dir, work_dir):
+    """LLM response wrapped in code fences is parsed correctly."""
+    (entries_dir / "entry0.md").write_text("# Entry\nContent")
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=5)
+
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        return '```json\n' + _json_beliefs(("fenced-belief", "A belief.")) + '\n```'
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    content = output.read_text()
+    assert "fenced-belief" in content
 
 
 def test_appends_to_existing_output_file(entries_dir, work_dir):
@@ -179,7 +207,7 @@ def test_appends_to_existing_output_file(entries_dir, work_dir):
     args = make_args(entries_dir, output=str(output), batch_size=5)
 
     def invoke_side_effect(prompt, model=None, timeout=None):
-        return "### [ACCEPT/REJECT] new-belief\nFresh.\n"
+        return _json_beliefs(("new-belief", "Fresh."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
          patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from reasons_lib.api import add_node, list_nodes
 
-from .llm import check_model_available, invoke_sync
+from .llm import check_model_available, extract_json, invoke_sync, RETRY_JSON
 from .prompts import PROPOSE_BELIEFS
 
 PROJECT_DIR = ".expert-build"
@@ -387,33 +387,44 @@ def cmd_propose_beliefs(args):
             print(f"  ERROR: {e}")
             continue
 
+        # Parse JSON response
+        beliefs = extract_json(result)
+        if not isinstance(beliefs, list):
+            print("    WARN: response not valid JSON, retrying...", file=sys.stderr)
+            try:
+                retry_response = invoke_sync(
+                    prompt + "\n\n" + result + "\n\n" + RETRY_JSON,
+                    model=args.model, timeout=600,
+                )
+                beliefs = extract_json(retry_response)
+            except Exception:
+                pass
+        if not isinstance(beliefs, list):
+            print("    WARN: could not parse beliefs JSON, skipping batch", file=sys.stderr)
+            continue
+
         # Filter out proposals whose IDs already exist
-        lines = result.split("\n")
-        filtered_lines = []
-        skip_until_next = False
         skipped = 0
-        for line in lines:
-            m = re.match(r"^### (?:\[ACCEPT/REJECT\]|\[?(?:ACCEPT|REJECT)\]?) (\S+)", line)
-            if m:
-                belief_id = m.group(1)
-                if belief_id in existing_ids:
-                    skip_until_next = True
-                    skipped += 1
-                    continue
-                else:
-                    skip_until_next = False
-            if skip_until_next:
-                if line.startswith("### "):
-                    skip_until_next = False
-                    filtered_lines.append(line)
+        filtered = []
+        for b in beliefs:
+            bid = b.get("id", "")
+            if bid in existing_ids:
+                skipped += 1
                 continue
-            filtered_lines.append(line)
+            filtered.append(b)
         total_skipped += skipped
 
-        # Write this batch's proposals immediately
+        # Write this batch's proposals as markdown for human review
         with output.open("a") as f:
-            f.write("\n".join(filtered_lines))
-            f.write("\n\n")
+            for b in filtered:
+                bid = b.get("id", "unknown")
+                claim = b.get("claim", "")
+                source = b.get("source", "")
+                source_url = b.get("source_url", "")
+                f.write(f"### [ACCEPT/REJECT] {bid}\n")
+                f.write(f"{claim}\n")
+                f.write(f"- Source: {source}\n")
+                f.write(f"- Source URL: {source_url or 'none'}\n\n")
 
         # Record this batch's entries as processed
         successful_entries.extend(Path(p) for p in batch_paths[i])

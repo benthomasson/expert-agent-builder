@@ -1,13 +1,12 @@
 """Practice exam runner for nogood discovery."""
 
-import json
 import re
 import sys
 from pathlib import Path
 
 from reasons_lib.api import add_node, add_nogood, list_nodes
 
-from .llm import check_model_available, invoke_sync
+from .llm import check_model_available, extract_json, invoke_sync, RETRY_JSON
 from .prompts import EXAM_ANSWER, EXAM_JUDGE
 
 REASONS_DB = "reasons.db"
@@ -103,33 +102,9 @@ def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
     return "\n".join(beliefs)
 
 
-RETRY_JSON = "Your response was not valid JSON. Respond with ONLY the JSON object, no other text."
-
-
-def _extract_json(response: str) -> dict | None:
-    """Extract a JSON object from an LLM response."""
-    text = response.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
-    try:
-        return json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        pass
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except (json.JSONDecodeError, ValueError):
-            pass
-    return None
-
-
 def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
     """Extract answer from JSON LLM response, retrying on parse failure."""
-    data = _extract_json(response)
+    data = extract_json(response)
     if data and "answer" in data:
         return str(data["answer"]).strip()
 
@@ -140,7 +115,7 @@ def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
                 prompt + "\n\n" + response + "\n\n" + RETRY_JSON,
                 model=model, timeout=60,
             )
-            data = _extract_json(retry_response)
+            data = extract_json(retry_response)
             if data and "answer" in data:
                 return str(data["answer"]).strip()
         except Exception:
@@ -158,7 +133,7 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
     except Exception:
         return False, "judge error"
 
-    data = _extract_json(response)
+    data = extract_json(response)
     if data and "verdict" in data:
         is_correct = str(data["verdict"]).strip().upper() == "CORRECT"
         return is_correct, str(data.get("explanation", "")).strip()
@@ -169,7 +144,7 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
             prompt + "\n\n" + response + "\n\n" + RETRY_JSON,
             model=model, timeout=60,
         )
-        data = _extract_json(retry_response)
+        data = extract_json(retry_response)
         if data and "verdict" in data:
             is_correct = data["verdict"].strip().upper() == "CORRECT"
             return is_correct, data.get("explanation", "")
