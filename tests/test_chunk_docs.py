@@ -81,6 +81,19 @@ def test_chunk_python_class_boundary():
     assert "class Bar" in chunks[1]
 
 
+def test_chunk_python_decorator_stays_with_function():
+    text = (
+        "import os\n\n"
+        "@decorator\n"
+        "def foo():\n    pass\n\n"
+        "def bar():\n    pass\n"
+    )
+    chunks = chunk_python(text, max_chars=60)
+    assert len(chunks) == 2
+    assert "@decorator" in chunks[0]
+    assert "def foo" in chunks[0]
+
+
 def test_chunk_python_no_defs_falls_back():
     text = "x = 1\ny = 2\nz = 3\n" * 100
     chunks = chunk_python(text, max_chars=100)
@@ -168,6 +181,24 @@ def test_dry_run_no_files_created(source_dir, work_dir, capsys):
     assert not entries_dir.exists() or len(list(entries_dir.rglob("*.md"))) == 0
     captured = capsys.readouterr()
     assert "chunk 1" in captured.out
+
+    manifest = work_dir / ".chunked-docs"
+    assert not manifest.exists()
+
+
+def test_dry_run_does_not_poison_manifest(source_dir, work_dir):
+    """Dry-run should not prevent subsequent real runs."""
+    text = "# A\n" + "x" * 200 + "\n\n# B\n" + "y" * 200
+    (source_dir / "big.md").write_text(text)
+
+    dry_args = make_args(source_dir, threshold=100, dry_run=True)
+    cmd_chunk_docs(dry_args)
+
+    real_args = make_args(source_dir, threshold=100, dry_run=False)
+    cmd_chunk_docs(real_args)
+
+    entries = list((work_dir / "entries").rglob("*.md"))
+    assert len(entries) == 2
 
 
 def test_provenance_frontmatter(source_dir, work_dir):

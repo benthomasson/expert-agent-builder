@@ -34,7 +34,7 @@ def chunk_python(text, max_chars=25000):
 
     preamble_end = 0
     for i, line in enumerate(lines):
-        if re.match(r"^(class |def |@)", line):
+        if re.match(r"^(class |def )", line) or (line.startswith("@") and i + 1 < len(lines) and re.match(r"^(class |def |@)", lines[i + 1])):
             preamble_end = i
             break
     else:
@@ -44,8 +44,13 @@ def chunk_python(text, max_chars=25000):
 
     boundaries = []
     for i, line in enumerate(lines[preamble_end:], start=preamble_end):
-        if re.match(r"^(class |def |@)", line):
-            boundaries.append(i)
+        if re.match(r"^(class |def )", line):
+            # Include preceding decorator lines
+            start = i
+            while start > preamble_end and lines[start - 1].startswith("@"):
+                start -= 1
+            if not boundaries or boundaries[-1] != start:
+                boundaries.append(start)
 
     if not boundaries:
         return chunk_fixed(text, max_chars)
@@ -151,9 +156,6 @@ def cmd_chunk_docs(args):
         if args.dry_run:
             for i, chunk in enumerate(chunks, 1):
                 print(f"  chunk {i}: {len(chunk)} chars")
-            with manifest.open("a") as f:
-                f.write(f"{source_path}\n")
-            done.add(str(source_path))
             continue
 
         today = date.today()
