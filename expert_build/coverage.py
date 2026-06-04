@@ -118,8 +118,9 @@ def cmd_cert_coverage(args):
                         bid = line.strip().strip("-").strip()
                         if any(b["id"] == bid for b in beliefs):
                             matches.append((bid, 1.0))
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  WARN: LLM matching failed for objective: {e}",
+                      file=sys.stderr)
 
         if not matches:
             # Fall back to keyword matching
