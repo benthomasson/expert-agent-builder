@@ -8,6 +8,8 @@ import pytest
 
 from expert_build.pipeline import (
     cmd_pipeline,
+    cmd_derive_review_repair,
+    _run_convergence_loop,
     _stage_ingest,
     _stage_extract,
     _stage_derive,
@@ -44,6 +46,18 @@ def make_pipeline_args(**overrides):
         timeout=600,
         domain="Test domain",
         resume=False,
+    )
+    defaults.update(overrides)
+    return types.SimpleNamespace(**defaults)
+
+
+def make_drr_args(**overrides):
+    defaults = dict(
+        model="claude",
+        rounds=3,
+        max_derive_rounds=10,
+        timeout=600,
+        domain="Test domain",
     )
     defaults.update(overrides)
     return types.SimpleNamespace(**defaults)
@@ -443,3 +457,116 @@ class TestPipelineState:
              patch("expert_build.caffeinate.hold"), \
              pytest.raises(SystemExit):
             cmd_pipeline(args)
+
+
+# --- Derive-Review-Repair ---
+
+class TestConvergenceLoop:
+    def test_converges_on_zero_invalids_and_zero_derived(self, work_dir):
+        args = make_drr_args(rounds=3)
+        review_result = {"reviewed": 5, "invalid": 0, "results": []}
+
+        with patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"):
+            summary = _run_convergence_loop(args, rounds=3)
+
+        assert summary["converged"] is True
+        assert summary["cycles"] == 1
+
+    def test_runs_max_rounds_without_convergence(self, work_dir):
+        args = make_drr_args(rounds=2)
+        review_result = {"reviewed": 5, "invalid": 1, "results": [
+            {"belief_id": "b1", "valid": False},
+        ]}
+        repair_result = {"linked": 1, "softened": 0, "abandoned": 0}
+
+        with patch("expert_build.pipeline._stage_derive", return_value=1), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_repair", return_value=repair_result), \
+             patch("expert_build.pipeline._stage_deduplicate"):
+            summary = _run_convergence_loop(args, rounds=2)
+
+        assert summary["converged"] is False
+        assert summary["cycles"] == 2
+        assert summary["total_derived"] == 2
+        assert summary["total_linked"] == 2
+
+    def test_skips_repair_when_no_invalids(self, work_dir):
+        args = make_drr_args(rounds=1)
+        review_result = {"reviewed": 5, "invalid": 0, "results": []}
+
+        with patch("expert_build.pipeline._stage_derive", return_value=1), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_repair") as mock_repair, \
+             patch("expert_build.pipeline._stage_deduplicate"):
+            summary = _run_convergence_loop(args, rounds=1)
+
+        assert not mock_repair.called
+        assert summary["total_invalid"] == 0
+
+    def test_summary_accumulates_across_cycles(self, work_dir):
+        args = make_drr_args(rounds=2)
+        review_result = {"reviewed": 3, "invalid": 1, "results": [
+            {"belief_id": "b1", "valid": False},
+        ]}
+        repair_result = {"linked": 0, "softened": 1, "abandoned": 0}
+
+        with patch("expert_build.pipeline._stage_derive", return_value=2), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_repair", return_value=repair_result), \
+             patch("expert_build.pipeline._stage_deduplicate"):
+            summary = _run_convergence_loop(args, rounds=2)
+
+        assert summary["total_derived"] == 4
+        assert summary["total_reviewed"] == 6
+        assert summary["total_invalid"] == 2
+        assert summary["total_softened"] == 2
+
+    def test_on_cycle_callback_called(self, work_dir):
+        args = make_drr_args(rounds=1)
+        review_result = {"reviewed": 1, "invalid": 0, "results": []}
+        events = []
+
+        def on_cycle(cycle, event, added, review):
+            events.append((cycle, event))
+
+        with patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"):
+            _run_convergence_loop(args, rounds=1, on_cycle=on_cycle)
+
+        assert (1, "derive_start") in events
+        assert (1, "cycle_end") in events
+
+
+class TestCmdDeriveReviewRepair:
+    def test_model_not_available_exits(self, work_dir):
+        args = make_drr_args(model="nonexistent")
+        with patch("expert_build.llm.check_model_available", return_value=False), \
+             pytest.raises(SystemExit):
+            cmd_derive_review_repair(args)
+
+    def test_missing_db_exits(self, work_dir):
+        (work_dir / "reasons.db").unlink()
+        args = make_drr_args()
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.caffeinate.hold"), \
+             pytest.raises(SystemExit):
+            cmd_derive_review_repair(args)
+
+    def test_prints_summary(self, work_dir, capsys):
+        args = make_drr_args(rounds=1)
+        review_result = {"reviewed": 5, "invalid": 0, "results": []}
+
+        with patch("expert_build.llm.check_model_available", return_value=True), \
+             patch("expert_build.pipeline._stage_derive", return_value=0), \
+             patch("expert_build.pipeline._stage_review", return_value=review_result), \
+             patch("expert_build.pipeline._stage_deduplicate"), \
+             patch("expert_build.caffeinate.hold"):
+            cmd_derive_review_repair(args)
+
+        captured = capsys.readouterr()
+        assert "Summary" in captured.err
+        assert "Derived: 0" in captured.err
+        assert "Converged: yes" in captured.err
