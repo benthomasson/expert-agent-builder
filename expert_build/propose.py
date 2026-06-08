@@ -68,15 +68,14 @@ def _load_processed(path: Path) -> dict[str, str]:
     return {}
 
 
-def _save_processed(path: Path, entries: list[Path], existing: dict[str, str]):
-    """Record entries as processed by content hash."""
-    updated = dict(existing)
-    for entry_path in entries:
+def _save_processed(path: Path, new_entries: list[Path], existing: dict[str, str]):
+    """Record new entries as processed by content hash and write to disk."""
+    for entry_path in new_entries:
         content = entry_path.read_text()
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-        updated[str(entry_path)] = content_hash
+        existing[str(entry_path)] = content_hash
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(updated, indent=2) + "\n")
+    path.write_text(json.dumps(existing, indent=2) + "\n")
 
 
 def _filter_unprocessed(entries: list[Path], processed: dict[str, str]) -> list[Path]:
@@ -436,8 +435,9 @@ def cmd_propose_beliefs(args):
                     f.write(f"- Source: {source}\n")
                     f.write(f"- Source URL: {source_url or 'none'}\n\n")
 
-            successful_entries.extend(Path(p) for p in batch_paths[i])
-            _save_processed(processed_path, successful_entries, processed)
+            batch_entries = [Path(p) for p in batch_paths[i]]
+            successful_entries.extend(batch_entries)
+            _save_processed(processed_path, batch_entries, processed)
 
     parallel = max(1, getattr(args, "parallel", 1))
     semaphore = asyncio.Semaphore(parallel)
