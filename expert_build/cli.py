@@ -62,6 +62,8 @@ def main():
     sum_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
     sum_p.add_argument("--recursive", "-r", action="store_true",
                        help="Recursively search subdirectories")
+    sum_p.add_argument("--parallel", type=int, default=1,
+                       help="Number of parallel LLM calls (default: 1)")
     sum_p.add_argument("--limit", type=int, help="Max files to process")
     sum_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
 
