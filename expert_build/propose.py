@@ -252,10 +252,11 @@ def _build_dedup_context(
 
 
 def auto_accept_proposals(filepath: str):
-    """Rewrite all [ACCEPT/REJECT] markers to [ACCEPT] in a proposals file."""
+    """Rewrite all [ACCEPT/REJECT] and [REJECT] markers to [ACCEPT] in a proposals file."""
     path = Path(filepath)
     text = path.read_text()
     text = re.sub(r'\[ACCEPT/REJECT\]', '[ACCEPT]', text)
+    text = re.sub(r'\[REJECT\]', '[ACCEPT]', text)
     path.write_text(text)
 
 
@@ -364,7 +365,7 @@ def cmd_propose_beliefs(args):
     if not appended:
         with output.open("w") as f:
             f.write("# Proposed Beliefs\n\n")
-            f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
+            f.write("Review each entry: change `[REJECT]` to `[ACCEPT]` to keep, or vice versa.\n")
             f.write("Then run: `expert-build accept-beliefs`\n\n")
             f.write("---\n\n")
             f.write(f"**Generated:** {date.today().isoformat()}\n")
@@ -440,7 +441,8 @@ def cmd_propose_beliefs(args):
                 claim = b.get("claim", "")
                 source = b.get("source", "")
                 source_url = b.get("source_url", "")
-                f.write(f"### [ACCEPT/REJECT] {bid}\n")
+                verdict = "[ACCEPT]" if b.get("accept", True) else "[REJECT]"
+                f.write(f"### {verdict} {bid}\n")
                 f.write(f"{claim}\n")
                 f.write(f"- Source: {source}\n")
                 f.write(f"- Source URL: {source_url or 'none'}\n\n")
@@ -478,7 +480,7 @@ def cmd_accept_beliefs(args):
 
     if not matches:
         print("No [ACCEPT] entries found in proposals file.")
-        print("Edit the file and change [ACCEPT/REJECT] to [ACCEPT] for beliefs to keep.")
+        print("Edit the file and change [REJECT] to [ACCEPT] for beliefs to keep.")
         return
 
     print(f"Found {len(matches)} accepted beliefs")

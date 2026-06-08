@@ -92,6 +92,19 @@ class TestAutoAcceptProposals:
         assert text.count("[ACCEPT]") == 2
         assert "[ACCEPT/REJECT]" not in text
 
+    def test_converts_reject_to_accept(self, tmp_path):
+        f = tmp_path / "proposals.md"
+        f.write_text(
+            "### [ACCEPT] good-belief\n"
+            "Text\n"
+            "### [REJECT] weak-belief\n"
+            "Text\n"
+        )
+        auto_accept_proposals(str(f))
+        text = f.read_text()
+        assert text.count("[ACCEPT]") == 2
+        assert "[REJECT]" not in text
+
     def test_no_markers_is_noop(self, tmp_path):
         f = tmp_path / "proposals.md"
         original = "### ACCEPT belief-one\nText\n"
