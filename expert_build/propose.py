@@ -252,10 +252,11 @@ def _build_dedup_context(
 
 
 def auto_accept_proposals(filepath: str):
-    """Rewrite all [ACCEPT/REJECT] markers to [ACCEPT] in a proposals file."""
+    """Rewrite all [ACCEPT/REJECT] and [REJECT] markers to [ACCEPT] in a proposals file."""
     path = Path(filepath)
     text = path.read_text()
     text = re.sub(r'\[ACCEPT/REJECT\]', '[ACCEPT]', text)
+    text = re.sub(r'\[REJECT\]', '[ACCEPT]', text)
     path.write_text(text)
 
 
@@ -364,7 +365,7 @@ def cmd_propose_beliefs(args):
     if not appended:
         with output.open("w") as f:
             f.write("# Proposed Beliefs\n\n")
-            f.write("Edit each entry: change `[ACCEPT/REJECT]` to `[ACCEPT]` or `[REJECT]`.\n")
+            f.write("Review each entry: change `[REJECT]` to `[ACCEPT]` to keep, or vice versa.\n")
             f.write("Then run: `expert-build accept-beliefs`\n\n")
             f.write("---\n\n")
             f.write(f"**Generated:** {date.today().isoformat()}\n")
