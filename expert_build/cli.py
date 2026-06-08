@@ -182,6 +182,11 @@ def main():
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        from .llm import format_cost_summary
+        cost = format_cost_summary()
+        if cost:
+            print(f"\n{cost}", file=sys.stderr)
 
 
 if __name__ == "__main__":
