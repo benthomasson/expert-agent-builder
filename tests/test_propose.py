@@ -37,10 +37,10 @@ def make_args(input_dir, output="proposed-beliefs.md", batch_size=2, model="test
     )
 
 
-def _json_beliefs(*beliefs):
+def _json_beliefs(*beliefs, accept=True):
     """Helper to build a JSON response from (id, claim) tuples."""
     return json.dumps([
-        {"id": b[0], "claim": b[1], "source": "entry.md", "source_url": ""}
+        {"id": b[0], "claim": b[1], "accept": accept, "source": "entry.md", "source_url": ""}
         for b in beliefs
     ])
 
@@ -315,3 +315,45 @@ def test_parallel_processes_all_batches(entries_dir, work_dir):
     assert "belief-1" in content
     assert "belief-2" in content
     assert "belief-3" in content
+
+
+def test_accept_verdict_from_llm(entries_dir, work_dir):
+    """LLM's accept=true produces [ACCEPT] in output."""
+    (entries_dir / "entry0.md").write_text("# Entry\nContent")
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=5)
+
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        return _json_beliefs(("good-belief", "A solid claim."), accept=True)
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    content = output.read_text()
+    assert "### [ACCEPT] good-belief" in content
+    assert "### [REJECT]" not in content
+
+
+def test_reject_verdict_from_llm(entries_dir, work_dir):
+    """LLM's accept=false produces [REJECT] in output."""
+    (entries_dir / "entry0.md").write_text("# Entry\nContent")
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=5)
+
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        return _json_beliefs(("weak-belief", "A vague claim."), accept=False)
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    content = output.read_text()
+    assert "### [REJECT] weak-belief" in content
+    assert "### [ACCEPT]" not in content

@@ -73,6 +73,8 @@ Rules:
 - Include commands, paths, config values when relevant
 - Do NOT include opinions or subjective assessments
 - Aim for 3-8 beliefs per entry (not every sentence is a belief)
+- Set "accept" to true if the claim is well-supported by the source material, \
+false if it is vague, speculative, or poorly supported
 
 ---
 
@@ -83,7 +85,7 @@ ENTRIES:
 ---
 
 Respond with ONLY this JSON array (no other text):
-[{{"id": "<kebab-case-id>", "claim": "<one-line factual claim>", "source": "<path to entry file>", "source_url": "<url from SOURCE_URL in header, or empty string>"}}]
+[{{"id": "<kebab-case-id>", "claim": "<one-line factual claim>", "accept": true, "source": "<path to entry file>", "source_url": "<url from SOURCE_URL in header, or empty string>"}}]
 """
 
 EXAM_ANSWER = """\

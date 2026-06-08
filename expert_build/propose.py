@@ -440,7 +440,8 @@ def cmd_propose_beliefs(args):
                 claim = b.get("claim", "")
                 source = b.get("source", "")
                 source_url = b.get("source_url", "")
-                f.write(f"### [ACCEPT/REJECT] {bid}\n")
+                verdict = "[ACCEPT]" if b.get("accept", True) else "[REJECT]"
+                f.write(f"### {verdict} {bid}\n")
                 f.write(f"{claim}\n")
                 f.write(f"- Source: {source}\n")
                 f.write(f"- Source URL: {source_url or 'none'}\n\n")
