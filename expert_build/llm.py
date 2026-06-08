@@ -84,7 +84,7 @@ def _parse_cli_json(output: str, model: str) -> str:
         return output
 
     if model.startswith("gemini"):
-        text = data.get("response", output)
+        text = data.get("response") or output
         stats = data.get("stats", {})
         input_tokens = 0
         output_tokens = 0
@@ -95,7 +95,7 @@ def _parse_cli_json(output: str, model: str) -> str:
         _record_cost(model, input_tokens, output_tokens, 0.0)
         return text
 
-    text = data.get("result", output)
+    text = data.get("result") or output
     usage = data.get("usage", {})
     input_tokens = (usage.get("input_tokens", 0)
                     + usage.get("cache_creation_input_tokens", 0)

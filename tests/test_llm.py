@@ -70,6 +70,15 @@ def test_parse_non_json_falls_back():
     assert s["calls"] == 0
 
 
+def test_parse_claude_null_result_falls_back():
+    data = {"result": None, "total_cost_usd": 0.01, "usage": {"input_tokens": 10, "output_tokens": 0}}
+    raw = json.dumps(data)
+    text = _parse_cli_json(raw, "claude")
+    assert text == raw
+    s = get_cost_summary()
+    assert s["calls"] == 1
+
+
 def test_parse_non_dict_json_falls_back():
     text = _parse_cli_json("[1, 2, 3]", "claude")
     assert text == "[1, 2, 3]"
