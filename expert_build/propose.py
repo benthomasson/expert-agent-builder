@@ -1,5 +1,6 @@
 """Propose and accept beliefs from entries."""
 
+import asyncio
 import hashlib
 import json
 import re
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from reasons_lib.api import add_node, list_nodes
 
-from .llm import check_model_available, extract_json, invoke_sync, RETRY_JSON
+from .llm import check_model_available, extract_json, invoke, RETRY_JSON
 from .prompts import PROPOSE_BELIEFS
 
 PROJECT_DIR = ".expert-build"
@@ -376,49 +377,59 @@ def cmd_propose_beliefs(args):
             f.write(f"**Source:** {source_desc}\n")
             f.write(f"**Model:** {args.model}\n\n")
 
-    total_skipped = 0
-    successful_entries = []
-    for i, batch_text in enumerate(batches):
-        print(f"  Batch {i + 1}/{len(batches)}...")
-        existing_context = _build_dedup_context(
-            existing_beliefs, batch_paths[i], batch_text,
-            belief_vectors=belief_vectors,
-        )
-        prompt = PROPOSE_BELIEFS.format(entries=batch_text) + existing_context
-        try:
-            result = invoke_sync(prompt, model=args.model, timeout=600)
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            continue
-
-        # Parse JSON response
-        beliefs = extract_json(result)
-        if not isinstance(beliefs, list):
-            print("    WARN: response not valid JSON, retrying...", file=sys.stderr)
+    async def _process_batch(i, batch_text, semaphore):
+        """Process one batch under concurrency limit. Returns (filtered, paths) or None."""
+        async with semaphore:
+            print(f"  Batch {i + 1}/{len(batches)}...")
+            existing_context = _build_dedup_context(
+                existing_beliefs, batch_paths[i], batch_text,
+                belief_vectors=belief_vectors,
+            )
+            prompt = PROPOSE_BELIEFS.format(entries=batch_text) + existing_context
             try:
-                retry_response = invoke_sync(
-                    prompt + "\n\n" + result + "\n\n" + RETRY_JSON,
-                    model=args.model, timeout=600,
-                )
-                beliefs = extract_json(retry_response)
-            except Exception:
-                pass
-        if not isinstance(beliefs, list):
-            print("    WARN: could not parse beliefs JSON, skipping batch", file=sys.stderr)
+                result = await invoke(prompt, model=args.model, timeout=600)
+            except Exception as e:
+                print(f"  ERROR: {e}")
+                return None
+
+            beliefs = extract_json(result)
+            if not isinstance(beliefs, list):
+                print("    WARN: response not valid JSON, retrying...", file=sys.stderr)
+                try:
+                    retry_response = await invoke(
+                        prompt + "\n\n" + result + "\n\n" + RETRY_JSON,
+                        model=args.model, timeout=600,
+                    )
+                    beliefs = extract_json(retry_response)
+                except Exception:
+                    pass
+            if not isinstance(beliefs, list):
+                print("    WARN: could not parse beliefs JSON, skipping batch", file=sys.stderr)
+                return None
+
+            filtered = []
+            for b in beliefs:
+                bid = b.get("id", "")
+                if bid in existing_ids:
+                    continue
+                filtered.append(b)
+            return filtered, batch_paths[i]
+
+    parallel = max(1, getattr(args, "parallel", 1))
+    semaphore = asyncio.Semaphore(parallel)
+
+    async def run_batches():
+        tasks = [_process_batch(i, bt, semaphore) for i, bt in enumerate(batches)]
+        return await asyncio.gather(*tasks)
+
+    batch_results = asyncio.run(run_batches())
+
+    successful_entries = []
+    for result in batch_results:
+        if result is None:
             continue
+        filtered, paths = result
 
-        # Filter out proposals whose IDs already exist
-        skipped = 0
-        filtered = []
-        for b in beliefs:
-            bid = b.get("id", "")
-            if bid in existing_ids:
-                skipped += 1
-                continue
-            filtered.append(b)
-        total_skipped += skipped
-
-        # Write this batch's proposals as markdown for human review
         with output.open("a") as f:
             for b in filtered:
                 bid = b.get("id", "unknown")
@@ -430,12 +441,8 @@ def cmd_propose_beliefs(args):
                 f.write(f"- Source: {source}\n")
                 f.write(f"- Source URL: {source_url or 'none'}\n\n")
 
-        # Record this batch's entries as processed
-        successful_entries.extend(Path(p) for p in batch_paths[i])
+        successful_entries.extend(Path(p) for p in paths)
         _save_processed(processed_path, successful_entries, processed)
-
-    if total_skipped:
-        print(f"  Filtered {total_skipped} already-accepted beliefs")
 
     print(f"\n{'Appended to' if appended else 'Wrote'} {output}")
 
