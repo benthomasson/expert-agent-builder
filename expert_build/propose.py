@@ -378,7 +378,6 @@ def cmd_propose_beliefs(args):
             f.write(f"**Model:** {args.model}\n\n")
 
     total_skipped = 0
-    successful_entries = []
     write_lock = asyncio.Lock()
 
     async def _process_batch(i, batch_text, semaphore):
@@ -436,7 +435,6 @@ def cmd_propose_beliefs(args):
                     f.write(f"- Source URL: {source_url or 'none'}\n\n")
 
             batch_entries = [Path(p) for p in batch_paths[i]]
-            successful_entries.extend(batch_entries)
             _save_processed(processed_path, batch_entries, processed)
 
     parallel = max(1, getattr(args, "parallel", 1))
