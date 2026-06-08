@@ -480,7 +480,7 @@ def cmd_accept_beliefs(args):
 
     if not matches:
         print("No [ACCEPT] entries found in proposals file.")
-        print("Edit the file and change [ACCEPT/REJECT] to [ACCEPT] for beliefs to keep.")
+        print("Edit the file and change [REJECT] to [ACCEPT] for beliefs to keep.")
         return
 
     print(f"Found {len(matches)} accepted beliefs")
