@@ -183,10 +183,24 @@ def main():
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        from .llm import format_cost_summary
-        cost = format_cost_summary()
-        if cost:
-            print(f"\n{cost}", file=sys.stderr)
+        from .llm import get_cost_summary, format_cost_summary
+        local = get_cost_summary()
+        try:
+            from reasons_lib.llm import get_cost_summary as reasons_cost
+            remote = reasons_cost()
+        except ImportError:
+            remote = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "total_cost_usd": 0.0}
+        total_calls = local["calls"] + remote["calls"]
+        if total_calls > 0:
+            total_input = local["input_tokens"] + remote["input_tokens"]
+            total_output = local["output_tokens"] + remote["output_tokens"]
+            total_cost = local["total_cost_usd"] + remote["total_cost_usd"]
+            parts = []
+            if total_cost > 0:
+                parts.append(f"${total_cost:.4f}")
+            parts.append(f"{total_input:,} input + {total_output:,} output tokens")
+            parts.append(f"{total_calls} call(s)")
+            print(f"\nCost: {' | '.join(parts)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
