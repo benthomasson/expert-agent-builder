@@ -12,7 +12,7 @@ from .prompts import SUMMARIZE, SUMMARIZE_CODE
 def _prepare_source(source_path):
     """Read source file, strip frontmatter, truncate if needed.
 
-    Returns (content, source_url, source_id, prompt) or None if skipped.
+    Returns (source_url, source_id, prompt) or None if skipped.
     """
     content = source_path.read_text()
 
@@ -73,28 +73,28 @@ def _write_entry(source_path, summary, source_url, source_id):
 
 async def _summarize_one(source_path, model, semaphore, manifest, done):
     """Summarize a single source file under concurrency limit."""
-    prepared = _prepare_source(source_path)
-    if prepared is None:
-        print(f"  SKIP (empty): {source_path.name}")
-        return False
-
-    source_url, source_id, prompt = prepared
-    print(f"Summarizing: {source_path.name}")
-
     async with semaphore:
+        prepared = _prepare_source(source_path)
+        if prepared is None:
+            print(f"  SKIP (empty): {source_path.name}")
+            return False
+
+        source_url, source_id, prompt = prepared
+        print(f"Summarizing: {source_path.name}")
+
         try:
             summary = await invoke(prompt, model=model)
         except Exception as e:
             print(f"  ERROR ({source_path.name}): {e}")
             return False
 
-    entry_path = _write_entry(source_path, summary, source_url, source_id)
-    print(f"  -> Created {entry_path}")
+        entry_path = _write_entry(source_path, summary, source_url, source_id)
+        print(f"  -> Created {entry_path}")
 
-    with manifest.open("a") as f:
-        f.write(f"{source_path}\n")
-    done.add(str(source_path))
-    return True
+        with manifest.open("a") as f:
+            f.write(f"{source_path}\n")
+        done.add(str(source_path))
+        return True
 
 
 def cmd_summarize(args):
@@ -136,7 +136,7 @@ def cmd_summarize(args):
         print(f"\nSummarized 0 sources ({skipped} already done)")
         return
 
-    parallel = getattr(args, "parallel", 1)
+    parallel = max(1, getattr(args, "parallel", 1))
     semaphore = asyncio.Semaphore(parallel)
 
     async def run_all():
