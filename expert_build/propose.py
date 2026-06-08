@@ -408,12 +408,14 @@ def cmd_propose_beliefs(args):
                 return None
 
             filtered = []
+            skipped = 0
             for b in beliefs:
                 bid = b.get("id", "")
                 if bid in existing_ids:
+                    skipped += 1
                     continue
                 filtered.append(b)
-            return filtered, batch_paths[i]
+            return filtered, batch_paths[i], skipped
 
     parallel = max(1, getattr(args, "parallel", 1))
     semaphore = asyncio.Semaphore(parallel)
@@ -424,11 +426,13 @@ def cmd_propose_beliefs(args):
 
     batch_results = asyncio.run(run_batches())
 
+    total_skipped = 0
     successful_entries = []
     for result in batch_results:
         if result is None:
             continue
-        filtered, paths = result
+        filtered, paths, skipped = result
+        total_skipped += skipped
 
         with output.open("a") as f:
             for b in filtered:
@@ -443,6 +447,9 @@ def cmd_propose_beliefs(args):
 
         successful_entries.extend(Path(p) for p in paths)
         _save_processed(processed_path, successful_entries, processed)
+
+    if total_skipped:
+        print(f"  Filtered {total_skipped} already-accepted beliefs")
 
     print(f"\n{'Appended to' if appended else 'Wrote'} {output}")
 

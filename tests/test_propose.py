@@ -288,3 +288,30 @@ def test_appends_to_existing_output_file(entries_dir, work_dir):
     content = output.read_text()
     assert "prior-belief" in content
     assert "new-belief" in content
+
+
+def test_parallel_processes_all_batches(entries_dir, work_dir):
+    """With parallel=2, all batches are processed and results written."""
+    for i in range(6):
+        (entries_dir / f"entry{i}.md").write_text(f"# Entry {i}\nContent {i}")
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=2, parallel=2)
+
+    call_count = 0
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        return _json_beliefs((f"belief-{call_count}", f"A belief from batch {call_count}."))
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    content = output.read_text()
+    assert call_count == 3
+    assert "belief-1" in content
+    assert "belief-2" in content
+    assert "belief-3" in content
