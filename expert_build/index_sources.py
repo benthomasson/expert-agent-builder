@@ -39,7 +39,7 @@ def _init_db(db_path, rebuild=False):
 
 
 def _insert_chunks(conn, chunks, filename, chunk_type="source", source_url=""):
-    """Insert chunks into the database and FTS5 index."""
+    """Insert chunks into the database."""
     for i, chunk_text in enumerate(chunks):
         section = f"chunk {i + 1}/{len(chunks)}" if len(chunks) > 1 else ""
         conn.execute(
@@ -47,9 +47,6 @@ def _insert_chunks(conn, chunks, filename, chunk_type="source", source_url=""):
             "VALUES (?, ?, ?, ?, ?)",
             (chunk_text.strip(), str(filename), section, chunk_type, source_url),
         )
-    conn.commit()
-    conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
-    conn.commit()
 
 
 def cmd_index_sources(args):
@@ -60,9 +57,9 @@ def cmd_index_sources(args):
         sys.exit(1)
 
     db_path = args.db
-    rebuild = getattr(args, "rebuild", False)
-    chunk_type = getattr(args, "type", "source")
-    max_chars = getattr(args, "chunk_size", DEFAULT_CHUNK_SIZE)
+    rebuild = args.rebuild
+    chunk_type = args.type
+    max_chars = args.chunk_size
 
     glob = input_dir.rglob if getattr(args, "recursive", False) else input_dir.glob
     sources = sorted(
@@ -76,40 +73,47 @@ def cmd_index_sources(args):
     print(f"Indexing {len(sources)} files into {db_path}")
     conn = _init_db(db_path, rebuild=rebuild)
 
-    existing = set()
-    if not rebuild:
-        cur = conn.execute("SELECT DISTINCT filename FROM chunks")
-        existing = {row[0] for row in cur.fetchall()}
+    try:
+        existing = set()
+        if not rebuild:
+            cur = conn.execute("SELECT DISTINCT filename FROM chunks")
+            existing = {row[0] for row in cur.fetchall()}
 
-    indexed = 0
-    skipped = 0
+        indexed = 0
+        skipped = 0
 
-    for source_path in sources:
-        if str(source_path) in existing:
-            skipped += 1
-            continue
+        for source_path in sources:
+            if str(source_path) in existing:
+                skipped += 1
+                continue
 
-        raw = source_path.read_text()
-        meta, content = _strip_frontmatter(raw)
+            raw = source_path.read_text()
+            meta, content = _strip_frontmatter(raw)
 
-        if not content.strip():
-            continue
+            if not content.strip():
+                continue
 
-        source_url = meta.get("source_url") or meta.get("source", "")
-        if source_url and not source_url.startswith(("http://", "https://")):
-            source_url = ""
+            source_url = meta.get("source_url") or meta.get("source", "")
+            if source_url and not source_url.startswith(("http://", "https://")):
+                source_url = ""
 
-        if source_path.suffix == ".py":
-            chunks = chunk_python(content, max_chars=max_chars)
-        elif source_path.suffix == ".md":
-            chunks = chunk_markdown(content, max_chars=max_chars)
-        else:
-            chunks = chunk_fixed(content, max_chars=max_chars)
+            if source_path.suffix == ".py":
+                chunks = chunk_python(content, max_chars=max_chars)
+            elif source_path.suffix == ".md":
+                chunks = chunk_markdown(content, max_chars=max_chars)
+            else:
+                chunks = chunk_fixed(content, max_chars=max_chars)
 
-        _insert_chunks(conn, chunks, source_path, chunk_type=chunk_type,
-                       source_url=source_url)
-        indexed += 1
-        print(f"  {source_path.name} -> {len(chunks)} chunk(s)")
+            _insert_chunks(conn, chunks, source_path, chunk_type=chunk_type,
+                           source_url=source_url)
+            indexed += 1
+            print(f"  {source_path.name} -> {len(chunks)} chunk(s)")
 
-    conn.close()
-    print(f"\nIndexed {indexed} files ({skipped} already indexed)")
+        if indexed:
+            conn.commit()
+            conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+            conn.commit()
+
+        print(f"\nIndexed {indexed} files ({skipped} already indexed)")
+    finally:
+        conn.close()

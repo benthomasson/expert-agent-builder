@@ -52,6 +52,7 @@ def test_init_db_rebuild_clears_data(tmp_path):
     db_path = str(tmp_path / "test.db")
     conn = _init_db(db_path)
     _insert_chunks(conn, ["test content"], "test.md")
+    conn.commit()
     conn.close()
 
     conn = _init_db(db_path, rebuild=True)
