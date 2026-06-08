@@ -133,12 +133,35 @@ def work_dir(tmp_path, monkeypatch):
     return wd
 
 
-def make_args(input_dir, threshold=100, dry_run=False):
+def make_args(input_dir, threshold=100, dry_run=False, recursive=False):
     return types.SimpleNamespace(
         input_dir=str(input_dir),
         threshold=threshold,
         dry_run=dry_run,
+        recursive=recursive,
     )
+
+
+def test_recursive_discovers_nested_files(source_dir, work_dir):
+    subdir = source_dir / "subdir"
+    subdir.mkdir()
+    text = "# A\n" + "x" * 200 + "\n\n# B\n" + "y" * 200
+    (subdir / "nested.md").write_text(text)
+    args = make_args(source_dir, threshold=100, recursive=True)
+    cmd_chunk_docs(args)
+    entries = list((work_dir / "entries").rglob("*.md"))
+    assert len(entries) == 2
+
+
+def test_non_recursive_skips_nested_files(source_dir, work_dir, capsys):
+    subdir = source_dir / "subdir"
+    subdir.mkdir()
+    text = "# A\n" + "x" * 200 + "\n\n# B\n" + "y" * 200
+    (subdir / "nested.md").write_text(text)
+    args = make_args(source_dir, threshold=100, recursive=False)
+    cmd_chunk_docs(args)
+    entries = list((work_dir / "entries").rglob("*.md")) if (work_dir / "entries").exists() else []
+    assert len(entries) == 0
 
 
 def test_skips_small_files(source_dir, work_dir, capsys):

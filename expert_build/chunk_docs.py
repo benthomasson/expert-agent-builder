@@ -116,8 +116,9 @@ def cmd_chunk_docs(args):
 
     threshold = args.threshold
 
+    glob = input_dir.rglob if getattr(args, "recursive", False) else input_dir.glob
     sources = sorted(
-        [*input_dir.glob("*.md"), *input_dir.glob("*.py")],
+        [*glob("*.md"), *glob("*.py")],
         key=lambda p: p.name,
     )
     if not sources:

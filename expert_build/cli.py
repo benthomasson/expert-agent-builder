@@ -53,11 +53,15 @@ def main():
     chunkd_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
     chunkd_p.add_argument("--threshold", type=int, default=30000,
                           help="Only chunk files larger than this (default: 30000)")
+    chunkd_p.add_argument("--recursive", "-r", action="store_true",
+                          help="Recursively search subdirectories")
     chunkd_p.add_argument("--dry-run", action="store_true", help="Show chunks without creating entries")
 
     # -- summarize --
     sum_p = sub.add_parser("summarize", help="Generate entries from source documents")
     sum_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
+    sum_p.add_argument("--recursive", "-r", action="store_true",
+                       help="Recursively search subdirectories")
     sum_p.add_argument("--limit", type=int, help="Max files to process")
     sum_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
 

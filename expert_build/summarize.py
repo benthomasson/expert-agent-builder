@@ -23,8 +23,9 @@ def cmd_summarize(args):
         print("Install claude CLI or specify --model")
         sys.exit(1)
 
+    glob = input_dir.rglob if getattr(args, "recursive", False) else input_dir.glob
     sources = sorted(
-        [*input_dir.glob("*.md"), *input_dir.glob("*.py")],
+        [*glob("*.md"), *glob("*.py")],
         key=lambda p: p.name,
     )
     if not sources:
