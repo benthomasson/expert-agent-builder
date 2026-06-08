@@ -68,15 +68,14 @@ def _load_processed(path: Path) -> dict[str, str]:
     return {}
 
 
-def _save_processed(path: Path, entries: list[Path], existing: dict[str, str]):
-    """Record entries as processed by content hash."""
-    updated = dict(existing)
-    for entry_path in entries:
+def _save_processed(path: Path, new_entries: list[Path], existing: dict[str, str]):
+    """Record new entries as processed by content hash and write to disk."""
+    for entry_path in new_entries:
         content = entry_path.read_text()
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-        updated[str(entry_path)] = content_hash
+        existing[str(entry_path)] = content_hash
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(updated, indent=2) + "\n")
+    path.write_text(json.dumps(existing, indent=2) + "\n")
 
 
 def _filter_unprocessed(entries: list[Path], processed: dict[str, str]) -> list[Path]:
@@ -378,8 +377,12 @@ def cmd_propose_beliefs(args):
             f.write(f"**Source:** {source_desc}\n")
             f.write(f"**Model:** {args.model}\n\n")
 
+    total_skipped = 0
+    write_lock = asyncio.Lock()
+
     async def _process_batch(i, batch_text, semaphore):
-        """Process one batch under concurrency limit. Returns (filtered, paths) or None."""
+        """Process one batch and write results immediately."""
+        nonlocal total_skipped
         async with semaphore:
             print(f"  Batch {i + 1}/{len(batches)}...")
             existing_context = _build_dedup_context(
@@ -391,7 +394,7 @@ def cmd_propose_beliefs(args):
                 result = await invoke(prompt, model=args.model, timeout=600)
             except Exception as e:
                 print(f"  ERROR: {e}")
-                return None
+                return
 
             beliefs = extract_json(result)
             if not isinstance(beliefs, list):
@@ -406,7 +409,7 @@ def cmd_propose_beliefs(args):
                     pass
             if not isinstance(beliefs, list):
                 print("    WARN: could not parse beliefs JSON, skipping batch", file=sys.stderr)
-                return None
+                return
 
             filtered = []
             skipped = 0
@@ -416,39 +419,32 @@ def cmd_propose_beliefs(args):
                     skipped += 1
                     continue
                 filtered.append(b)
-            return filtered, batch_paths[i], skipped
+
+        async with write_lock:
+            total_skipped += skipped
+            with output.open("a") as f:
+                for b in filtered:
+                    bid = b.get("id", "unknown")
+                    claim = b.get("claim", "")
+                    source = b.get("source", "")
+                    source_url = b.get("source_url", "")
+                    verdict = "[ACCEPT]" if b.get("accept", True) else "[REJECT]"
+                    f.write(f"### {verdict} {bid}\n")
+                    f.write(f"{claim}\n")
+                    f.write(f"- Source: {source}\n")
+                    f.write(f"- Source URL: {source_url or 'none'}\n\n")
+
+            batch_entries = [Path(p) for p in batch_paths[i]]
+            _save_processed(processed_path, batch_entries, processed)
 
     parallel = max(1, getattr(args, "parallel", 1))
     semaphore = asyncio.Semaphore(parallel)
 
     async def run_batches():
         tasks = [_process_batch(i, bt, semaphore) for i, bt in enumerate(batches)]
-        return await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks)
 
-    batch_results = asyncio.run(run_batches())
-
-    total_skipped = 0
-    successful_entries = []
-    for result in batch_results:
-        if result is None:
-            continue
-        filtered, paths, skipped = result
-        total_skipped += skipped
-
-        with output.open("a") as f:
-            for b in filtered:
-                bid = b.get("id", "unknown")
-                claim = b.get("claim", "")
-                source = b.get("source", "")
-                source_url = b.get("source_url", "")
-                verdict = "[ACCEPT]" if b.get("accept", True) else "[REJECT]"
-                f.write(f"### {verdict} {bid}\n")
-                f.write(f"{claim}\n")
-                f.write(f"- Source: {source}\n")
-                f.write(f"- Source URL: {source_url or 'none'}\n\n")
-
-        successful_entries.extend(Path(p) for p in paths)
-        _save_processed(processed_path, successful_entries, processed)
+    asyncio.run(run_batches())
 
     if total_skipped:
         print(f"  Filtered {total_skipped} already-accepted beliefs")
