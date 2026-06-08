@@ -138,6 +138,19 @@ def main():
                        help="LLM timeout in seconds (default: 600)")
     drr_p.add_argument("--domain", help="Domain description for derive context")
 
+    # -- index-sources --
+    idx_p = sub.add_parser("index-sources", help="Build FTS5 chunks database from source documents")
+    idx_p.add_argument("--input-dir", default="sources", help="Source directory (default: sources)")
+    idx_p.add_argument("--recursive", "-r", action="store_true",
+                       help="Recursively search subdirectories")
+    idx_p.add_argument("--db", default="rag_fts.db", help="Output database path (default: rag_fts.db)")
+    idx_p.add_argument("--type", default="source", choices=["source", "summary", "chunked-summary"],
+                       help="Chunk type metadata (default: source)")
+    idx_p.add_argument("--chunk-size", type=int, default=2000,
+                       help="Target chunk size in chars (default: 2000)")
+    idx_p.add_argument("--rebuild", action="store_true",
+                       help="Drop and rebuild the index from scratch")
+
     # -- status --
     sub.add_parser("status", help="Show pipeline progress")
 
@@ -162,6 +175,7 @@ def main():
         "accept-beliefs": lambda a: _lazy("propose", "cmd_accept_beliefs")(a),
         "cert-coverage": lambda a: _lazy("coverage", "cmd_cert_coverage")(a),
         "exam": lambda a: _lazy("exam", "cmd_exam")(a),
+        "index-sources": lambda a: _lazy("index_sources", "cmd_index_sources")(a),
         "pipeline": lambda a: _lazy("pipeline", "cmd_pipeline")(a),
         "derive-review-repair": lambda a: _lazy("pipeline", "cmd_derive_review_repair")(a),
         "status": lambda a: _lazy("init_cmd", "cmd_status")(a),
