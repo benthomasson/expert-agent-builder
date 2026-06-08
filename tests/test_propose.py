@@ -3,7 +3,7 @@
 import json
 import types
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 
@@ -26,13 +26,14 @@ def work_dir(tmp_path, monkeypatch):
     return wd
 
 
-def make_args(input_dir, output="proposed-beliefs.md", batch_size=2, model="test"):
+def make_args(input_dir, output="proposed-beliefs.md", batch_size=2, model="test", parallel=1):
     return types.SimpleNamespace(
         input_dir=str(input_dir),
         output=output,
         batch_size=batch_size,
         model=model,
         all=False,
+        parallel=parallel,
     )
 
 
@@ -61,7 +62,7 @@ def test_proposals_written_after_each_batch(entries_dir, work_dir):
         return _json_beliefs((f"belief-from-batch-{call_count}", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -85,7 +86,7 @@ def test_all_batches_written_on_success(entries_dir, work_dir):
         return _json_beliefs((f"belief-{call_count}", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -110,7 +111,7 @@ def test_existing_beliefs_filtered_per_batch(entries_dir, work_dir):
         )
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=existing), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -137,7 +138,7 @@ def test_failed_batch_entries_not_marked_processed(entries_dir, work_dir):
         return _json_beliefs((f"belief-{call_count}", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -168,7 +169,7 @@ def test_json_retry_on_bad_response(entries_dir, work_dir):
         return _json_beliefs(("retried-belief", "A belief from retry."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -189,7 +190,7 @@ def test_json_with_code_fence(entries_dir, work_dir):
         return '```json\n' + _json_beliefs(("fenced-belief", "A belief.")) + '\n```'
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -213,7 +214,7 @@ def test_source_url_extracted_from_entry_frontmatter(entries_dir, work_dir):
         return _json_beliefs(("test-belief", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -236,7 +237,7 @@ def test_source_key_url_extracted_from_entry_frontmatter(entries_dir, work_dir):
         return _json_beliefs(("test-belief", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -259,7 +260,7 @@ def test_source_key_local_path_not_used_as_url(entries_dir, work_dir):
         return _json_beliefs(("test-belief", "A belief."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -279,7 +280,7 @@ def test_appends_to_existing_output_file(entries_dir, work_dir):
         return _json_beliefs(("new-belief", "Fresh."))
 
     with patch("expert_build.propose.check_model_available", return_value=True), \
-         patch("expert_build.propose.invoke_sync", side_effect=invoke_side_effect), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
          patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
          patch("expert_build.propose._has_embeddings", return_value=False):
         cmd_propose_beliefs(args)
@@ -287,3 +288,30 @@ def test_appends_to_existing_output_file(entries_dir, work_dir):
     content = output.read_text()
     assert "prior-belief" in content
     assert "new-belief" in content
+
+
+def test_parallel_processes_all_batches(entries_dir, work_dir):
+    """With parallel=2, all batches are processed and results written."""
+    for i in range(6):
+        (entries_dir / f"entry{i}.md").write_text(f"# Entry {i}\nContent {i}")
+
+    output = work_dir / "proposed-beliefs.md"
+    args = make_args(entries_dir, output=str(output), batch_size=2, parallel=2)
+
+    call_count = 0
+    def invoke_side_effect(prompt, model=None, timeout=None):
+        nonlocal call_count
+        call_count += 1
+        return _json_beliefs((f"belief-{call_count}", f"A belief from batch {call_count}."))
+
+    with patch("expert_build.propose.check_model_available", return_value=True), \
+         patch("expert_build.propose.invoke", new_callable=AsyncMock, side_effect=invoke_side_effect), \
+         patch("expert_build.propose._load_existing_beliefs", return_value=[]), \
+         patch("expert_build.propose._has_embeddings", return_value=False):
+        cmd_propose_beliefs(args)
+
+    content = output.read_text()
+    assert call_count == 3
+    assert "belief-1" in content
+    assert "belief-2" in content
+    assert "belief-3" in content

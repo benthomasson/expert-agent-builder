@@ -73,6 +73,8 @@ def main():
     prop_p.add_argument("--output", default="proposed-beliefs.md",
                         help="Output file (default: proposed-beliefs.md)")
     prop_p.add_argument("--model", default="claude", help="Model to use (default: claude)")
+    prop_p.add_argument("--parallel", type=int, default=1,
+                        help="Number of parallel LLM calls (default: 1)")
     prop_p.add_argument("--batch-size", type=int, default=5,
                         help="Entries per LLM batch (default: 5)")
     prop_p.add_argument("--entry", action="append",
