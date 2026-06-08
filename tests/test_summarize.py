@@ -29,8 +29,8 @@ def work_dir(tmp_path, monkeypatch):
     return wd
 
 
-def make_args(input_dir, model="test-model", limit=None):
-    return types.SimpleNamespace(input_dir=str(input_dir), model=model, limit=limit)
+def make_args(input_dir, model="test-model", limit=None, recursive=False):
+    return types.SimpleNamespace(input_dir=str(input_dir), model=model, limit=limit, recursive=recursive)
 
 
 def _find_entry(work_dir):
@@ -78,6 +78,36 @@ def test_discovers_both_md_and_py(source_dir, work_dir):
     assert mock_llm.call_count == 2
     entries = list((work_dir / "entries").rglob("*.md"))
     assert len(entries) == 2
+
+
+def test_recursive_discovers_nested_files(source_dir, work_dir):
+    subdir = source_dir / "subdir"
+    subdir.mkdir()
+    (subdir / "nested.md").write_text("# Nested\nContent")
+    (source_dir / "top.md").write_text("# Top\nContent")
+    args = make_args(source_dir, recursive=True)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm:
+        cmd_summarize(args)
+
+    assert mock_llm.call_count == 2
+    entries = list((work_dir / "entries").rglob("*.md"))
+    assert len(entries) == 2
+
+
+def test_non_recursive_skips_nested_files(source_dir, work_dir):
+    subdir = source_dir / "subdir"
+    subdir.mkdir()
+    (subdir / "nested.md").write_text("# Nested\nContent")
+    (source_dir / "top.md").write_text("# Top\nContent")
+    args = make_args(source_dir, recursive=False)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke_sync", return_value="## Title\nSummary") as mock_llm:
+        cmd_summarize(args)
+
+    assert mock_llm.call_count == 1
 
 
 def test_ignores_other_extensions(source_dir, work_dir):
