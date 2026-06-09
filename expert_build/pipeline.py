@@ -249,9 +249,11 @@ def _stage_repair(args, review_result, round_label=""):
     prefix = f"[{round_label}] " if round_label else ""
 
     invalid_ids = [
-        r["belief_id"] for r in review_result.get("results", [])
+        r.get("belief_id") or r.get("id")
+        for r in review_result.get("results", [])
         if not r.get("valid", True)
     ]
+    invalid_ids = [i for i in invalid_ids if i]
 
     if not invalid_ids:
         print(f"{prefix}No invalid beliefs to repair", file=sys.stderr)

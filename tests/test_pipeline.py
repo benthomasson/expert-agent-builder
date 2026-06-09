@@ -259,6 +259,25 @@ class TestStageRepair:
         assert mock_research.called
         call_kwargs = mock_research.call_args[1]
         assert set(call_kwargs["belief_ids"]) == {"b1", "b3"}
+
+    def test_handles_id_key_from_review(self, work_dir):
+        """review_beliefs returns 'id' not 'belief_id' — repair must handle both."""
+        args = make_pipeline_args()
+        review_result = {"results": [
+            {"id": "b1", "valid": False},
+            {"id": "b2", "valid": True},
+            {"id": "b3", "valid": False},
+        ]}
+        research_result = {
+            "total_invalid": 2, "linked": 1,
+            "softened": 0, "abandoned": 1,
+        }
+        with patch("reasons_lib.api.research", return_value=research_result) as mock_research:
+            result = _stage_repair(args, review_result)
+        assert mock_research.called
+        call_kwargs = mock_research.call_args[1]
+        assert set(call_kwargs["belief_ids"]) == {"b1", "b3"}
+        assert result["linked"] == 1
         assert result["linked"] == 1
 
 
