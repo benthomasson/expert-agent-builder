@@ -21,6 +21,7 @@ STAGE_NAMES = {
     6: "repair",
     7: "deduplicate",
     8: "export",
+    9: "index",
 }
 
 
@@ -319,6 +320,39 @@ def _stage_export(args):
     print(f"\nFinal: {in_count} IN / {total} total beliefs", file=sys.stderr)
 
 
+def _stage_index(args):
+    """Stage 9: Build FTS5 index from sources and entries."""
+    from .index_sources import cmd_index_sources
+
+    sources_dir = Path(args.sources_dir)
+    entries_dir = Path("entries")
+    db_path = getattr(args, "index_db", "rag_fts.db")
+
+    if sources_dir.exists():
+        print(f"Indexing sources from {sources_dir}...", file=sys.stderr)
+        idx_args = SimpleNamespace(
+            input_dir=str(sources_dir),
+            recursive=True,
+            db=db_path,
+            type="source",
+            chunk_size=2000,
+            rebuild=True,
+        )
+        cmd_index_sources(idx_args)
+
+    if entries_dir.exists():
+        print(f"Indexing entries from {entries_dir}...", file=sys.stderr)
+        idx_args = SimpleNamespace(
+            input_dir=str(entries_dir),
+            recursive=True,
+            db=db_path,
+            type="summary",
+            chunk_size=2000,
+            rebuild=False,
+        )
+        cmd_index_sources(idx_args)
+
+
 def _run_convergence_loop(args, rounds, start_cycle=1, total_rounds=None,
                           on_stage=None):
     """Run derive -> review -> repair -> dedup until convergence.
@@ -458,7 +492,7 @@ def cmd_pipeline(args):
     else:
         state = _init_state(args)
 
-    total_stages = 8
+    total_stages = 9
     has_sources = args.url or args.pdf
 
     try:
@@ -535,6 +569,15 @@ def cmd_pipeline(args):
             _mark_stage(state, 8, "completed")
         else:
             print("Stage 8 (EXPORT) already completed, skipping", file=sys.stderr)
+
+        # Stage 9: Index
+        if not _stage_completed(state, 9):
+            _banner(9, total_stages, "INDEX")
+            _mark_stage(state, 9, "running")
+            _stage_index(args)
+            _mark_stage(state, 9, "completed")
+        else:
+            print("Stage 9 (INDEX) already completed, skipping", file=sys.stderr)
 
         state["status"] = "completed"
         _save_state(state)
