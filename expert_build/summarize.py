@@ -114,11 +114,11 @@ def cmd_summarize(args):
 
     glob = input_dir.rglob if getattr(args, "recursive", False) else input_dir.glob
     sources = sorted(
-        [*glob("*.md"), *glob("*.py")],
+        [*glob("*.md"), *glob("*.py"), *glob("*.txt")],
         key=lambda p: p.name,
     )
     if not sources:
-        print(f"No .md or .py files in {input_dir}")
+        print(f"No .md, .py, or .txt files in {input_dir}")
         return
 
     if args.limit:

@@ -113,7 +113,7 @@ def test_non_recursive_skips_nested_files(source_dir, work_dir):
 
 def test_ignores_other_extensions(source_dir, work_dir):
     (source_dir / "data.json").write_text("{}")
-    (source_dir / "notes.txt").write_text("hello")
+    (source_dir / "image.png").write_bytes(b"\x89PNG")
     args = make_args(source_dir)
 
     with patch("expert_build.summarize.check_model_available", return_value=True), \
@@ -121,6 +121,18 @@ def test_ignores_other_extensions(source_dir, work_dir):
         cmd_summarize(args)
 
     assert not mock_llm.called
+
+
+def test_discovers_txt_files(source_dir, work_dir):
+    (source_dir / "notes.txt").write_text("Some plain text notes")
+    args = make_args(source_dir)
+
+    with patch("expert_build.summarize.check_model_available", return_value=True), \
+         patch("expert_build.summarize.invoke", new_callable=AsyncMock, return_value="## Notes\nSummary"):
+        cmd_summarize(args)
+
+    entry = _find_entry(work_dir)
+    assert "Summary" in entry.read_text()
 
 
 # --- Template selection tests ---
