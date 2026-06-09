@@ -126,6 +126,8 @@ def _stage_summarize(args):
         input_dir=args.sources_dir,
         limit=None,
         model=args.model,
+        recursive=getattr(args, "recursive", False),
+        parallel=getattr(args, "parallel", 1),
     )
     cmd_summarize(sum_args)
 
@@ -138,6 +140,7 @@ def _stage_extract(args):
         input_dir="entries",
         output="proposed-beliefs.md",
         model=args.model,
+        parallel=getattr(args, "parallel", 1),
         batch_size=5,
         entry=None,
     )

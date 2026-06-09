@@ -123,6 +123,10 @@ def main():
     pipe_p.add_argument("--timeout", type=int, default=600,
                         help="LLM timeout in seconds (default: 600)")
     pipe_p.add_argument("--domain", help="Domain description for derive context")
+    pipe_p.add_argument("--parallel", type=int, default=1,
+                        help="Number of parallel LLM calls for summarize/propose (default: 1)")
+    pipe_p.add_argument("--recursive", "-r", action="store_true",
+                        help="Recursively search source subdirectories")
     pipe_p.add_argument("--resume", action="store_true",
                         help="Resume from last saved pipeline state")
 
