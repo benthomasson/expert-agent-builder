@@ -1,5 +1,5 @@
 [project]
-name = "expert-agent-builder"
+name = "ftl-expert-build"
 version = "0.2.0"
 description = "Build expert agents from documented domains"
 readme = "README.md"

@@ -130,34 +130,6 @@ wheels = [
 ]
 
 [[package]]
-name = "expert-agent-builder"
-version = "0.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "ftl-reasons" },
-    { name = "httpx" },
-    { name = "pypdf" },
-]
-
-[package.optional-dependencies]
-embeddings = [
-    { name = "fastembed" },
-    { name = "numpy" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.12" },
-    { name = "fastembed", marker = "extra == 'embeddings'", specifier = ">=0.7.4" },
-    { name = "ftl-reasons", editable = "../ftl-reasons" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "numpy", marker = "extra == 'embeddings'" },
-    { name = "pypdf", specifier = ">=4.0" },
-]
-provides-extras = ["embeddings"]
-
-[[package]]
 name = "fastembed"
 version = "0.7.4"
 source = { registry = "https://pypi.org/simple" }
@@ -205,8 +177,36 @@ wheels = [
 ]
 
 [[package]]
+name = "ftl-expert-build"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "ftl-reasons" },
+    { name = "httpx" },
+    { name = "pypdf" },
+]
+
+[package.optional-dependencies]
+embeddings = [
+    { name = "fastembed" },
+    { name = "numpy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "fastembed", marker = "extra == 'embeddings'", specifier = ">=0.7.4" },
+    { name = "ftl-reasons", editable = "../ftl-reasons" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "numpy", marker = "extra == 'embeddings'" },
+    { name = "pypdf", specifier = ">=4.0" },
+]
+provides-extras = ["embeddings"]
+
+[[package]]
 name = "ftl-reasons"
-version = "0.43.0"
+version = "0.47.0"
 source = { editable = "../ftl-reasons" }
 
 [package.metadata]

@@ -5,7 +5,7 @@ Build expert agents from documented domains. Automates the knowledge pipeline: f
 ## Install
 
 ```bash
-uv tool install git+https://github.com/benthomasson/expert-agent-builder
+uv tool install ftl-expert-build
 ```
 
 Requires `ftl-reasons` and either `claude` or `gemini` CLI on PATH.
