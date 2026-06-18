@@ -60,7 +60,7 @@ def cmd_init(args):
             f"\n"
             f"## Sources\n"
             f"\n"
-            f"_No sources fetched yet. Run `expert-build fetch-docs <url>` to start._\n"
+            f"_No sources yet. Add documents to `sources/` to start._\n"
             f"\n"
             f"## Certification\n"
             f"\n"
@@ -69,7 +69,7 @@ def cmd_init(args):
             f"\n"
             f"## Progress\n"
             f"\n"
-            f"- Sources fetched: 0\n"
+            f"- Sources: 0\n"
             f"- Entries generated: 0\n"
             f"- Beliefs proposed: 0\n"
             f"- Beliefs accepted: 0\n"
@@ -80,7 +80,7 @@ def cmd_init(args):
         print("expert-build.md already exists, skipping")
 
     print(f"\nExpert agent repo initialized: {name}")
-    print(f"Next: expert-build fetch-docs <documentation-url>")
+    print(f"Next: add documents to sources/ and run expert-build summarize")
 
 
 def cmd_status(args):
@@ -130,7 +130,7 @@ def cmd_status(args):
             domain = first_line[len("# Expert Build: "):]
 
     print(f"=== Expert Agent Status: {domain} ===")
-    print(f"Sources:     {source_count} documents fetched")
+    print(f"Sources:     {source_count} documents")
     print(f"Entries:     {entry_count} entries")
     print(f"Beliefs:     {belief_count} IN")
     print(f"Nogoods:     {nogood_count} recorded")

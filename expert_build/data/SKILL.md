@@ -1,21 +1,21 @@
 ---
 name: expert-build
 description: Build expert agents from documented domains
-argument-hint: "[init|chunk-pdf|fetch-docs|summarize|propose-beliefs|accept-beliefs|cert-coverage|exam|status]"
+argument-hint: "[init|chunk-pdf|chunk-docs|summarize|propose-beliefs|accept-beliefs|cert-coverage|exam|pipeline|status]"
 allowed-tools: Bash(expert-build *), Bash(uvx *expert-agent-builder*), Read, Grep, Glob
 ---
 
 # Expert Agent Builder
 
 Build expert agents from documented domains by automating the knowledge pipeline:
-chunk PDF / fetch docs → generate entries → extract beliefs → map coverage → run exams.
+chunk documents → generate entries → extract beliefs → map coverage → run exams.
 
 ## How to Run
 
 ```bash
 expert-build [command]
 # or
-uvx --from git+https://github.com/benthomasson/expert-agent-builder expert-build [command]
+uvx --from ftl-expert-build expert-build [command]
 ```
 
 ## Commands
@@ -36,16 +36,8 @@ expert-build chunk-pdf sources/paper.pdf --model gemini --timeout 900
 ```
 Reads the PDF, uses an LLM to identify sections, then generates one entry per section with detailed content and key claims. Tracks progress in `.chunked-{prefix}` manifest for idempotent reruns.
 
-### fetch-docs
-Fetch documentation from URLs, convert to markdown.
-```bash
-expert-build fetch-docs https://docs.example.com/ --depth 2
-expert-build fetch-docs https://docs.example.com/sitemap.xml --sitemap
-```
-Saves to `sources/` with frontmatter recording source URL and fetch date.
-
 ### summarize
-Generate entries from fetched source documents using an LLM.
+Generate entries from source documents using an LLM.
 ```bash
 expert-build summarize
 expert-build summarize --limit 10 --model claude
@@ -103,7 +95,6 @@ If the user says:
 - "build an expert agent for X" → `expert-build init X`
 - "chunk this paper" → `expert-build chunk-pdf <path>`
 - "analyze this PDF" → `expert-build chunk-pdf <path>`
-- "fetch the docs" → `expert-build fetch-docs <url>`
 - "summarize the sources" → `expert-build summarize`
 - "extract beliefs" → `expert-build propose-beliefs`
 - "check coverage" → `expert-build cert-coverage <file>`

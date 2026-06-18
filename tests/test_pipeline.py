@@ -10,7 +10,6 @@ from expert_build.pipeline import (
     cmd_pipeline,
     cmd_derive_review_repair,
     _run_convergence_loop,
-    _stage_ingest,
     _stage_extract,
     _stage_derive,
     _stage_review,
@@ -34,15 +33,12 @@ def work_dir(tmp_path, monkeypatch):
 
 def make_pipeline_args(**overrides):
     defaults = dict(
-        url=None,
         pdf=None,
         sources_dir="sources",
         model="claude",
         rounds=3,
         max_derive_rounds=10,
         no_auto_accept=False,
-        no_fetch=False,
-        depth=2,
         timeout=600,
         domain="Test domain",
         resume=False,
@@ -111,47 +107,6 @@ class TestAutoAcceptProposals:
         f.write_text(original)
         auto_accept_proposals(str(f))
         assert f.read_text() == original
-
-
-# --- Stage: Ingest ---
-
-class TestStageIngest:
-    def test_skips_when_no_fetch(self, work_dir, capsys):
-        args = make_pipeline_args(no_fetch=True)
-        _stage_ingest(args)
-        captured = capsys.readouterr()
-        assert "Skipping fetch" in captured.err
-
-    def test_calls_fetch_docs_with_url(self, work_dir):
-        args = make_pipeline_args(url="https://example.com/docs")
-        with patch("expert_build.fetch.cmd_fetch_docs") as mock_fetch:
-            _stage_ingest(args)
-        assert mock_fetch.called
-        fetch_args = mock_fetch.call_args[0][0]
-        assert fetch_args.url == "https://example.com/docs"
-        assert fetch_args.depth == 2
-
-    def test_calls_chunk_pdf(self, work_dir):
-        args = make_pipeline_args(pdf=["paper.pdf"])
-        with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk:
-            _stage_ingest(args)
-        assert mock_chunk.called
-
-    def test_no_fetch_still_chunks_pdf(self, work_dir):
-        args = make_pipeline_args(no_fetch=True, pdf=["paper.pdf"])
-        with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk:
-            _stage_ingest(args)
-        assert mock_chunk.called
-
-    def test_no_fetch_skips_url_but_chunks_pdf(self, work_dir, capsys):
-        args = make_pipeline_args(no_fetch=True, url="https://example.com", pdf=["paper.pdf"])
-        with patch("expert_build.chunk_pdf.cmd_chunk_pdf") as mock_chunk, \
-             patch("expert_build.fetch.cmd_fetch_docs") as mock_fetch:
-            _stage_ingest(args)
-        assert not mock_fetch.called
-        assert mock_chunk.called
-        captured = capsys.readouterr()
-        assert "Skipping fetch" in captured.err
 
 
 # --- Stage: Extract ---

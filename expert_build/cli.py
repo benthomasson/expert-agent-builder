@@ -29,18 +29,6 @@ def main():
     init_p.add_argument("--domain", help="One-line domain description")
     init_p.add_argument("--no-git", action="store_true", help="Skip git init (for subdirectories of existing repos)")
 
-    # -- fetch-docs --
-    fetch_p = sub.add_parser("fetch-docs", help="Fetch documentation from URLs")
-    fetch_p.add_argument("url", help="Starting URL to fetch")
-    fetch_p.add_argument("--depth", type=int, default=1, help="Crawl depth (default: 1)")
-    fetch_p.add_argument("--output-dir", default="sources", help="Output directory (default: sources)")
-    fetch_p.add_argument("--selector", default="main,article,.content,body",
-                         help="CSS selectors for content (comma-separated, default: main,article,.content,body)")
-    fetch_p.add_argument("--sitemap", action="store_true", help="Use sitemap.xml for URL discovery")
-    fetch_p.add_argument("--include", help="URL pattern to include (glob)")
-    fetch_p.add_argument("--exclude", help="URL pattern to exclude (glob)")
-    fetch_p.add_argument("--delay", type=float, default=1.0, help="Delay between requests in seconds (default: 1.0)")
-
     # -- chunk-pdf --
     chunk_p = sub.add_parser("chunk-pdf", help="Chunk a PDF paper into section entries")
     chunk_p.add_argument("pdf", help="Path to PDF file")
@@ -106,7 +94,6 @@ def main():
 
     # -- pipeline --
     pipe_p = sub.add_parser("pipeline", help="Run end-to-end EEM construction pipeline")
-    pipe_p.add_argument("--url", help="Starting URL for doc fetching")
     pipe_p.add_argument("--pdf", action="append", help="PDF files to chunk (repeatable)")
     pipe_p.add_argument("--sources-dir", default="sources", help="Source directory (default: sources)")
     pipe_p.add_argument("--model", default="claude", help="Model for LLM calls (default: claude)")
@@ -116,10 +103,6 @@ def main():
                         help="Max derive exhaust rounds per cycle (default: 10)")
     pipe_p.add_argument("--no-auto-accept", action="store_true",
                         help="Stop after propose-beliefs for human review")
-    pipe_p.add_argument("--no-fetch", action="store_true",
-                        help="Skip fetch-docs (use existing sources/)")
-    pipe_p.add_argument("--depth", type=int, default=2,
-                        help="Crawl depth for fetch-docs (default: 2)")
     pipe_p.add_argument("--timeout", type=int, default=600,
                         help="LLM timeout in seconds (default: 600)")
     pipe_p.add_argument("--domain", help="Domain description for derive context")
@@ -173,7 +156,6 @@ def main():
         "init": lambda a: _lazy("init_cmd", "cmd_init")(a),
         "chunk-pdf": lambda a: _lazy("chunk_pdf", "cmd_chunk_pdf")(a),
         "chunk-docs": lambda a: _lazy("chunk_docs", "cmd_chunk_docs")(a),
-        "fetch-docs": lambda a: _lazy("fetch", "cmd_fetch_docs")(a),
         "summarize": lambda a: _lazy("summarize", "cmd_summarize")(a),
         "propose-beliefs": lambda a: _lazy("propose", "cmd_propose_beliefs")(a),
         "accept-beliefs": lambda a: _lazy("propose", "cmd_accept_beliefs")(a),

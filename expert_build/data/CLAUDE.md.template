@@ -11,7 +11,7 @@ This is an expert agent for **{{DOMAIN}}**.
 | `entries/` | Chronological documentation entries |
 | `reasons.db` | Reason maintenance database (beliefs with dependency tracking) |
 | `expert-build.md` | Build pipeline config and progress |
-| `sources/` | Raw fetched documentation |
+| `sources/` | Source documents |
 
 ## Workflow
 
@@ -39,7 +39,6 @@ reasons status
 
 # Expert build pipeline
 expert-build status
-expert-build fetch-docs <url>
 expert-build summarize
 expert-build propose-beliefs
 expert-build cert-coverage objectives/file.md

@@ -1,6 +1,6 @@
 # expert-agent-builder
 
-Build expert agents from documented domains. Automates the knowledge pipeline: fetch docs, chunk large files, generate summaries, extract beliefs, derive deeper conclusions, review and repair, build FTS5 search indexes.
+Build expert agents from documented domains. Automates the knowledge pipeline: chunk large files, generate summaries, extract beliefs, derive deeper conclusions, review and repair, build FTS5 search indexes.
 
 ## Install
 
@@ -16,9 +16,7 @@ Requires `ftl-reasons` and either `claude` or `gemini` CLI on PATH.
 # Bootstrap a new expert agent
 expert-build init rhcsa --domain "Red Hat Certified System Administrator"
 
-# Fetch documentation
-expert-build fetch-docs https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/ --depth 2
-
+# Add source documents to sources/
 # Generate entries from sources
 expert-build summarize --parallel 4
 
@@ -28,7 +26,7 @@ expert-build propose-beliefs --parallel 4
 expert-build accept-beliefs
 
 # Run the full pipeline end-to-end
-expert-build pipeline --url https://docs.example.com --parallel 4
+expert-build pipeline --sources-dir ~/git/my-project --parallel 4
 ```
 
 ## Commands
@@ -36,7 +34,6 @@ expert-build pipeline --url https://docs.example.com --parallel 4
 | Command | Description |
 |---------|-------------|
 | `init` | Bootstrap a new expert agent repo |
-| `fetch-docs` | Fetch documentation from URLs |
 | `chunk-pdf` | Split PDFs into section-based entries |
 | `chunk-docs` | Split large .md/.py/.txt files by structural boundaries |
 | `summarize` | Generate entries from source documents via LLM |
@@ -52,7 +49,7 @@ expert-build pipeline --url https://docs.example.com --parallel 4
 ## Pipeline Stages
 
 ```
-1. Ingest (fetch-docs / chunk-pdf)
+1. Ingest (chunk-pdf)
 2. Summarize (LLM summaries of source documents)
 3. Extract (propose-beliefs + accept-beliefs)
 4-7. Derive → Review → Repair → Deduplicate (convergence loop)
@@ -62,7 +59,7 @@ expert-build pipeline --url https://docs.example.com --parallel 4
 
 ```bash
 # Full pipeline with parallel LLM calls and recursive source discovery
-expert-build pipeline --url https://docs.example.com --parallel 4 --recursive
+expert-build pipeline --sources-dir ~/git/my-project --parallel 4 --recursive
 
 # Resume after a crash
 expert-build pipeline --resume

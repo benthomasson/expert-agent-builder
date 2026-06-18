@@ -37,7 +37,6 @@ def _init_state(args):
         "current_stage": None,
         "current_cycle": None,
         "args": {
-            "url": getattr(args, "url", None),
             "model": args.model,
             "rounds": args.rounds,
             "domain": getattr(args, "domain", None),
@@ -91,23 +90,7 @@ def _banner(stage_num, total, name):
 
 
 def _stage_ingest(args):
-    """Stage 1: Fetch docs or chunk PDFs into sources/."""
-    if not args.no_fetch and args.url:
-        from .fetch import cmd_fetch_docs
-        fetch_args = SimpleNamespace(
-            url=args.url,
-            depth=args.depth,
-            output_dir=args.sources_dir,
-            selector="main,article,.content,body",
-            sitemap=False,
-            include=None,
-            exclude=None,
-            delay=1.0,
-        )
-        cmd_fetch_docs(fetch_args)
-    elif args.no_fetch:
-        print("Skipping fetch (--no-fetch)", file=sys.stderr)
-
+    """Stage 1: Chunk PDFs into sources/."""
     if args.pdf:
         from .chunk_pdf import cmd_chunk_pdf
         for pdf_path in args.pdf:
@@ -493,7 +476,7 @@ def cmd_pipeline(args):
         state = _init_state(args)
 
     total_stages = 9
-    has_sources = args.url or args.pdf
+    has_sources = args.pdf
 
     try:
         # Stage 1: Ingest
@@ -504,7 +487,7 @@ def cmd_pipeline(args):
                 _stage_ingest(args)
                 _mark_stage(state, 1, "completed")
             else:
-                print("No --url or --pdf provided, skipping ingest", file=sys.stderr)
+                print("No --pdf provided, skipping ingest", file=sys.stderr)
                 _mark_stage(state, 1, "completed", skipped=True)
         else:
             print("Stage 1 (INGEST) already completed, skipping", file=sys.stderr)

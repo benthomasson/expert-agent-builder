@@ -104,7 +104,7 @@ def cmd_summarize(args):
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
         print(f"Source directory not found: {input_dir}")
-        print("Run: expert-build fetch-docs <url>")
+        print("Add documents to sources/ first")
         sys.exit(1)
 
     if not check_model_available(args.model):
