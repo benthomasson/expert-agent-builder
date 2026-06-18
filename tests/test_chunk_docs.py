@@ -149,7 +149,7 @@ def test_recursive_discovers_nested_files(source_dir, work_dir):
     (subdir / "nested.md").write_text(text)
     args = make_args(source_dir, threshold=100, recursive=True)
     cmd_chunk_docs(args)
-    entries = list((work_dir / "entries").rglob("*.md"))
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md"))
     assert len(entries) == 2
 
 
@@ -160,7 +160,7 @@ def test_non_recursive_skips_nested_files(source_dir, work_dir, capsys):
     (subdir / "nested.md").write_text(text)
     args = make_args(source_dir, threshold=100, recursive=False)
     cmd_chunk_docs(args)
-    entries = list((work_dir / "entries").rglob("*.md")) if (work_dir / "entries").exists() else []
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md")) if (work_dir / "sources" / "chunks").exists() else []
     assert len(entries) == 0
 
 
@@ -170,7 +170,7 @@ def test_skips_small_files(source_dir, work_dir, capsys):
     cmd_chunk_docs(args)
     captured = capsys.readouterr()
     assert "Chunked 0 files" in captured.out
-    entries = list((work_dir / "entries").rglob("*.md")) if (work_dir / "entries").exists() else []
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md")) if (work_dir / "sources" / "chunks").exists() else []
     assert len(entries) == 0
 
 
@@ -179,7 +179,7 @@ def test_chunks_large_markdown(source_dir, work_dir):
     (source_dir / "big.md").write_text(text)
     args = make_args(source_dir, threshold=100)
     cmd_chunk_docs(args)
-    entries = list((work_dir / "entries").rglob("*.md"))
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md"))
     assert len(entries) == 2
     contents = [e.read_text() for e in sorted(entries)]
     assert "Section 1" in contents[0]
@@ -191,7 +191,7 @@ def test_chunks_large_python(source_dir, work_dir):
     (source_dir / "big.py").write_text(text)
     args = make_args(source_dir, threshold=100)
     cmd_chunk_docs(args)
-    entries = list((work_dir / "entries").rglob("*.md"))
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md"))
     assert len(entries) == 2
 
 
@@ -200,7 +200,7 @@ def test_dry_run_no_files_created(source_dir, work_dir, capsys):
     (source_dir / "big.md").write_text(text)
     args = make_args(source_dir, threshold=100, dry_run=True)
     cmd_chunk_docs(args)
-    entries_dir = work_dir / "entries"
+    entries_dir = work_dir / "sources" / "chunks"
     assert not entries_dir.exists() or len(list(entries_dir.rglob("*.md"))) == 0
     captured = capsys.readouterr()
     assert "chunk 1" in captured.out
@@ -220,7 +220,7 @@ def test_dry_run_does_not_poison_manifest(source_dir, work_dir):
     real_args = make_args(source_dir, threshold=100, dry_run=False)
     cmd_chunk_docs(real_args)
 
-    entries = list((work_dir / "entries").rglob("*.md"))
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md"))
     assert len(entries) == 2
 
 
@@ -230,7 +230,7 @@ def test_provenance_frontmatter(source_dir, work_dir):
     (source_dir / "doc.md").write_text(text)
     args = make_args(source_dir, threshold=100)
     cmd_chunk_docs(args)
-    entries = sorted((work_dir / "entries").rglob("*.md"))
+    entries = sorted((work_dir / "sources" / "chunks").rglob("*.md"))
     content = entries[0].read_text()
     assert "source_url: https://example.com/doc" in content
     assert "source_id: abc" in content
@@ -242,10 +242,10 @@ def test_manifest_tracking(source_dir, work_dir):
     (source_dir / "big.md").write_text(text)
     args = make_args(source_dir, threshold=100)
     cmd_chunk_docs(args)
-    entries_count_1 = len(list((work_dir / "entries").rglob("*.md")))
+    entries_count_1 = len(list((work_dir / "sources" / "chunks").rglob("*.md")))
 
     cmd_chunk_docs(args)
-    entries_count_2 = len(list((work_dir / "entries").rglob("*.md")))
+    entries_count_2 = len(list((work_dir / "sources" / "chunks").rglob("*.md")))
     assert entries_count_1 == entries_count_2
 
 
@@ -254,7 +254,7 @@ def test_chunk_names_include_stem(source_dir, work_dir):
     (source_dir / "my-doc.md").write_text(text)
     args = make_args(source_dir, threshold=100)
     cmd_chunk_docs(args)
-    entries = list((work_dir / "entries").rglob("*.md"))
+    entries = list((work_dir / "sources" / "chunks").rglob("*.md"))
     names = [e.name for e in entries]
     assert any("my-doc-chunk-1" in n for n in names)
     assert any("my-doc-chunk-2" in n for n in names)

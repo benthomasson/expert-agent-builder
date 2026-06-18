@@ -1,9 +1,7 @@
-"""Chunk a PDF paper into section-by-section entries."""
+"""Chunk a PDF paper into section-based source documents."""
 
 import re
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -149,7 +147,7 @@ def make_entry_filename(prefix: str, section: dict) -> str:
 
 
 def cmd_chunk_pdf(args):
-    """Chunk a PDF paper into section-by-section entries."""
+    """Chunk a PDF paper into section-based source documents."""
     pdf_path = Path(args.pdf).resolve()
     if not pdf_path.exists():
         print(f"PDF not found: {pdf_path}")
@@ -214,37 +212,19 @@ def cmd_chunk_pdf(args):
         content = format_section_content(pages, section, source_label)
         title = f"Section {section['number']}: {section['title']}"
 
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".md", delete=False,
-            ) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
+        chunk_dir = Path("sources") / "chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
 
-            result = subprocess.run(
-                ["entry", "create", filename, title, "--content-file", tmp_path],
-                capture_output=True,
-                text=True,
-            )
+        fm_lines = [
+            f"source: {pdf_path}",
+            f"source_label: {source_label}",
+            f"section: {section['number']}",
+        ]
+        frontmatter = "---\n" + "\n".join(fm_lines) + "\n---\n\n"
 
-            Path(tmp_path).unlink(missing_ok=True)
-
-            if result.returncode == 0:
-                print(f"    -> {result.stdout.strip()}")
-            else:
-                result = subprocess.run(
-                    ["entry", "create", filename, title, "--content", content],
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode == 0:
-                    print(f"    -> {result.stdout.strip()}")
-                else:
-                    print(f"    WARN: entry create failed: {result.stderr.strip()}")
-                    continue
-        except FileNotFoundError:
-            print("  ERROR: entry CLI not found. Install with: uv tool install entry")
-            sys.exit(1)
+        chunk_path = chunk_dir / f"{filename}.md"
+        chunk_path.write_text(f"# {title}\n\n{frontmatter}{content}\n")
+        print(f"    -> {chunk_path}")
 
         with manifest.open("a") as f:
             f.write(f"{filename}\n")

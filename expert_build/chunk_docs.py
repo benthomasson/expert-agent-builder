@@ -2,7 +2,6 @@
 
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 
@@ -159,9 +158,8 @@ def cmd_chunk_docs(args):
                 print(f"  chunk {i}: {len(chunk)} chars")
             continue
 
-        today = date.today()
-        entry_dir = Path("entries") / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
-        entry_dir.mkdir(parents=True, exist_ok=True)
+        chunk_dir = Path("sources") / "chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
 
         source_url = meta.get("source_url") or meta.get("source", "")
         if source_url and not source_url.startswith(("http://", "https://")):
@@ -169,8 +167,8 @@ def cmd_chunk_docs(args):
         source_id = meta.get("source_id", "")
 
         for i, chunk in enumerate(chunks, 1):
-            entry_name = f"{source_path.stem}-chunk-{i}.md"
-            entry_path = entry_dir / entry_name
+            chunk_name = f"{source_path.stem}-chunk-{i}.md"
+            chunk_path = chunk_dir / chunk_name
 
             fm_lines = [f"source: {source_path}"]
             if source_url:
@@ -180,8 +178,8 @@ def cmd_chunk_docs(args):
             fm_lines.append(f"chunk: {i}/{len(chunks)}")
             frontmatter = "---\n" + "\n".join(fm_lines) + "\n---\n\n"
 
-            entry_path.write_text(frontmatter + chunk + "\n")
-            print(f"  -> {entry_path}")
+            chunk_path.write_text(frontmatter + chunk + "\n")
+            print(f"  -> {chunk_path}")
 
         total_chunked += 1
 
