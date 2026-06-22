@@ -102,6 +102,31 @@ Respond with ONLY this JSON (no other text):
 {{"answer": "<letter or short answer>", "explanation": "<one paragraph>"}}
 """
 
+EXAM_ANSWER_AGENTIC = """\
+You are a domain expert answering an exam question. You have access to a \
+belief database that you can search before answering.
+
+Available tools — respond with a JSON tool call to use one:
+
+1. Search beliefs by keyword:
+   {{"tool": "search_beliefs", "query": "<search terms>"}}
+
+2. Show full details of a specific belief:
+   {{"tool": "show_belief", "id": "<belief-id>"}}
+
+When you have enough information, respond with your final answer:
+{{"answer": "<letter or short answer>", "explanation": "<one paragraph>"}}
+
+Rules:
+- Search for beliefs relevant to the question before answering
+- You may make multiple searches to gather enough context
+- Base your answer on what you find in the belief database
+- If you find no relevant beliefs, answer based on general knowledge
+
+Question: {question}
+{choices}
+"""
+
 EXAM_JUDGE = """\
 You are grading an exam answer. Determine if the student's answer is \
 semantically correct — it does not need to match the expected answer word \

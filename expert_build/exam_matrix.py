@@ -32,8 +32,15 @@ def write_matrix_summary(
         lines.append(f"**Beliefs:** {belief_count} IN")
     lines.extend(["", "## Score Matrix", ""])
 
-    lines.append("| Model | With Beliefs | Control | Delta |")
-    lines.append("|-------|-------------|---------|-------|")
+    has_agentic = any(k[1] == "agentic" for k in all_results)
+
+    header = "| Model | With Beliefs | Control | Delta |"
+    sep = "|-------|-------------|---------|-------|"
+    if has_agentic:
+        header = "| Model | With Beliefs | Control | Agentic | Delta |"
+        sep = "|-------|-------------|---------|---------|-------|"
+    lines.append(header)
+    lines.append(sep)
 
     for model in models:
         b = all_results.get((model, "beliefs"))
@@ -44,12 +51,20 @@ def write_matrix_summary(
         c_pct = 100 * c["correct"] // c["total"] if c["total"] else 0
         delta = b_pct - c_pct
         sign = "+" if delta >= 0 else ""
-        lines.append(
+        row = (
             f"| {model} "
             f"| {b['correct']}/{b['total']} ({b_pct}%) "
             f"| {c['correct']}/{c['total']} ({c_pct}%) "
-            f"| {sign}{delta}% |"
         )
+        if has_agentic:
+            a = all_results.get((model, "agentic"))
+            if a:
+                a_pct = 100 * a["correct"] // a["total"] if a["total"] else 0
+                row += f"| {a['correct']}/{a['total']} ({a_pct}%) "
+            else:
+                row += "| — "
+        row += f"| {sign}{delta}% |"
+        lines.append(row)
 
     all_objectives = {}
     for result in all_results.values():
@@ -61,16 +76,21 @@ def write_matrix_summary(
         lines.extend(["", "## By Objective", ""])
 
         headers = ["Objective"]
+        obj_conditions = ["beliefs", "control"]
+        suffixes = ["+b", "-c"]
+        if has_agentic:
+            obj_conditions.append("agentic")
+            suffixes.append("+a")
         for model in models:
             short = model.split(":")[-1] if ":" in model else model
-            headers.extend([f"{short}+b", f"{short}-c"])
+            headers.extend([f"{short}{s}" for s in suffixes])
         lines.append("| " + " | ".join(headers) + " |")
         lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
         for obj in sorted(all_objectives.keys()):
             row = [obj]
             for model in models:
-                for condition in ["beliefs", "control"]:
+                for condition in obj_conditions:
                     r = all_results.get((model, condition))
                     if r and obj in r["obj_scores"]:
                         s = r["obj_scores"][obj]
@@ -120,18 +140,28 @@ def cmd_exam_matrix(args):
     output_dir.mkdir(parents=True, exist_ok=True)
     no_judge = getattr(args, "no_judge", False)
     timeout = getattr(args, "timeout", 120)
+    include_agentic = getattr(args, "agentic", False)
+    max_turns = getattr(args, "max_turns", 5)
+
+    conditions = [
+        ("beliefs", beliefs_context, False),
+        ("control", control_context, False),
+    ]
+    if include_agentic:
+        conditions.append(("agentic", "", True))
 
     all_results = {}
-    total_runs = len(models) * 2
+    total_runs = len(models) * len(conditions)
 
     print(f"=== Exam Matrix: {q_path.name} ===")
     print(f"Models: {', '.join(models)}")
+    print(f"Conditions: {', '.join(c[0] for c in conditions)}")
     print(f"Questions: {len(questions)}")
     print(f"Runs: {total_runs}\n")
 
     run_num = 0
     for model in models:
-        for condition, context in [("beliefs", beliefs_context), ("control", control_context)]:
+        for condition, context, is_agentic in conditions:
             run_num += 1
             label = f"[{run_num}/{total_runs}] {model} ({condition})"
             print(f"\n{'=' * 50}")
@@ -141,6 +171,8 @@ def cmd_exam_matrix(args):
             result = run_exam(
                 questions, context, model,
                 no_judge=no_judge, timeout=timeout,
+                agentic=is_agentic, db_path=db_path,
+                max_turns=max_turns,
             )
             all_results[(model, condition)] = result
 
@@ -168,6 +200,11 @@ def cmd_exam_matrix(args):
         c_pct = 100 * c["correct"] // c["total"] if c["total"] else 0
         delta = b_pct - c_pct
         sign = "+" if delta >= 0 else ""
-        print(f"  {model:20s}  beliefs: {b_pct:3d}%  control: {c_pct:3d}%  delta: {sign}{delta}%")
+        line = f"  {model:20s}  beliefs: {b_pct:3d}%  control: {c_pct:3d}%  delta: {sign}{delta}%"
+        a = all_results.get((model, "agentic"))
+        if a:
+            a_pct = 100 * a["correct"] // a["total"] if a["total"] else 0
+            line += f"  agentic: {a_pct:3d}%"
+        print(line)
 
     print(f"\nSummary saved to {summary_path}")

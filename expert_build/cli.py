@@ -93,6 +93,10 @@ def main():
                         help="Disable LLM judge for open-ended questions (use string matching)")
     exam_p.add_argument("--no-beliefs", action="store_true",
                         help="Run without belief context (control condition)")
+    exam_p.add_argument("--agentic", action="store_true",
+                        help="Use tool-calling mode (search beliefs per question)")
+    exam_p.add_argument("--max-turns", type=int, default=5,
+                        help="Max tool-calling turns per question in agentic mode (default: 5)")
 
     # -- exam-matrix --
     em_p = sub.add_parser("exam-matrix",
@@ -108,6 +112,10 @@ def main():
                       help="Disable LLM judge for open-ended questions")
     em_p.add_argument("--timeout", type=int, default=120,
                       help="LLM timeout per question in seconds (default: 120)")
+    em_p.add_argument("--agentic", action="store_true",
+                      help="Include agentic mode (tool-calling) as third condition")
+    em_p.add_argument("--max-turns", type=int, default=5,
+                      help="Max tool-calling turns per question in agentic mode (default: 5)")
 
     # -- pipeline --
     pipe_p = sub.add_parser("pipeline", help="Run end-to-end EEM construction pipeline")

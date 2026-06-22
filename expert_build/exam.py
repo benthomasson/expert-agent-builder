@@ -7,7 +7,7 @@ from pathlib import Path
 from reasons_lib.api import add_node, add_nogood, list_nodes
 
 from .llm import check_model_available, extract_json, invoke_sync, RETRY_JSON
-from .prompts import EXAM_ANSWER, EXAM_JUDGE
+from .prompts import EXAM_ANSWER, EXAM_ANSWER_AGENTIC, EXAM_JUDGE
 
 REASONS_DB = "reasons.db"
 
@@ -155,7 +155,66 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
     return False, "no verdict"
 
 
-def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120):
+def _execute_tool(call, db_path):
+    """Execute a pseudo-tool call against the reasons API."""
+    from reasons_lib.api import search, show_node
+
+    tool = call.get("tool")
+    if tool == "search_beliefs":
+        query = call.get("query", "")
+        if not query:
+            return "Error: query is required"
+        return search(query=query, db_path=db_path, format="minimal")
+    elif tool == "show_belief":
+        node_id = call.get("id", "")
+        if not node_id:
+            return "Error: id is required"
+        try:
+            node = show_node(node_id, db_path=db_path)
+            return f"[{node['truth_value']}] {node['id']}: {node['text']}"
+        except KeyError:
+            return f"Belief '{node_id}' not found"
+    return f"Unknown tool: {tool}"
+
+
+def _run_agentic_question(question, choices_text, model, db_path,
+                          max_turns=5, timeout=120):
+    """Run one question with pseudo-tool-calling loop.
+
+    Returns: {"answer": str, "explanation": str, "tool_calls": int}
+    """
+    prompt = EXAM_ANSWER_AGENTIC.format(question=question, choices=choices_text)
+    tool_calls = 0
+
+    for turn in range(max_turns):
+        response = invoke_sync(prompt, model=model, timeout=timeout)
+        parsed = extract_json(response)
+
+        if parsed and "answer" in parsed:
+            parsed["tool_calls"] = tool_calls
+            return parsed
+
+        if parsed and "tool" in parsed:
+            tool_calls += 1
+            tool_result = _execute_tool(parsed, db_path)
+            print(f"    tool: {parsed['tool']}({parsed.get('query', parsed.get('id', ''))})",
+                  file=sys.stderr)
+            prompt = (
+                f"{prompt}\n\n"
+                f"Assistant: {response}\n\n"
+                f"Tool result:\n{tool_result}\n\n"
+                f"Continue. Search more or provide your final answer as JSON."
+            )
+        else:
+            return {"answer": response.strip()[:100], "explanation": "",
+                    "tool_calls": tool_calls}
+
+    return {"answer": "", "explanation": "max turns reached",
+            "tool_calls": tool_calls}
+
+
+def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120,
+             agentic=False, db_path="reasons.db", max_turns=5):
     """Run exam questions and return results.
 
     Returns: {"correct": int, "total": int, "results": [...],
@@ -170,20 +229,33 @@ def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120):
         if q["choices"]:
             choices_text = "\n".join(f"  {k}) {v}" for k, v in sorted(q["choices"].items()))
 
-        prompt = EXAM_ANSWER.format(
-            beliefs=beliefs_context,
-            question=q["text"],
-            choices=choices_text,
-        )
+        if agentic:
+            try:
+                agentic_result = _run_agentic_question(
+                    q["text"], choices_text, model, db_path,
+                    max_turns=max_turns, timeout=timeout,
+                )
+                answer = str(agentic_result.get("answer", "")).strip()
+                response = agentic_result.get("explanation", "")
+            except Exception as e:
+                print(f"  {q['id']}: ERROR - {e}")
+                results.append({"question": q, "status": "ERROR", "error": str(e)})
+                continue
+        else:
+            prompt = EXAM_ANSWER.format(
+                beliefs=beliefs_context,
+                question=q["text"],
+                choices=choices_text,
+            )
 
-        try:
-            response = invoke_sync(prompt, model=model, timeout=timeout)
-        except Exception as e:
-            print(f"  {q['id']}: ERROR - {e}")
-            results.append({"question": q, "status": "ERROR", "error": str(e)})
-            continue
+            try:
+                response = invoke_sync(prompt, model=model, timeout=timeout)
+            except Exception as e:
+                print(f"  {q['id']}: ERROR - {e}")
+                results.append({"question": q, "status": "ERROR", "error": str(e)})
+                continue
 
-        answer = extract_answer(response, model=model, prompt=prompt)
+            answer = extract_answer(response, model=model, prompt=prompt)
         expected = q["correct"].strip().lower()
 
         if q["choices"] or len(expected) == 1:
@@ -265,19 +337,27 @@ def cmd_exam(args):
     if args.limit:
         questions = questions[:args.limit]
 
-    if getattr(args, "no_beliefs", False):
+    is_agentic = getattr(args, "agentic", False)
+    db_path = str(args.beliefs_file)
+
+    if is_agentic:
+        beliefs_context = "(Using agentic mode — beliefs accessed via tools)"
+    elif getattr(args, "no_beliefs", False):
         beliefs_context = "(No beliefs provided — control condition)"
     else:
-        db_path = str(args.beliefs_file)
         beliefs_context = load_beliefs_for_context(db_path=db_path)
 
+    mode = "agentic" if is_agentic else "one-shot"
     print(f"=== Exam: {q_path.name} ===")
     print(f"Questions: {len(questions)}")
-    print(f"Model: {args.model}\n")
+    print(f"Model: {args.model}")
+    print(f"Mode: {mode}\n")
 
     result = run_exam(
         questions, beliefs_context, args.model,
         no_judge=getattr(args, "no_judge", False),
+        agentic=is_agentic, db_path=db_path,
+        max_turns=getattr(args, "max_turns", 5),
     )
 
     correct = result["correct"]
