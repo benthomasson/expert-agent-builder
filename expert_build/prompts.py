@@ -125,8 +125,11 @@ Available tools — respond with a JSON tool call to use one:
 2. Show full details of a specific belief:
    {{"tool": "show_belief", "id": "<belief-id>"}}
 
-When you have enough information, respond with your final answer:
-{{"answer": "<letter or short answer>", "explanation": "<one paragraph>"}}
+When you have enough information, respond with ONLY this JSON (no other text):
+{{"answer": "<JUST the letter a/b/c/d for multiple choice, or a short phrase for open-ended>", "explanation": "<one paragraph>"}}
+
+IMPORTANT: For the "answer" field, use ONLY the letter (e.g. "c"), NOT the full \
+option text (e.g. NOT "c) AlexNet").
 
 Rules:
 - Search for beliefs relevant to the question before answering

@@ -182,6 +182,39 @@ def test_judge_case_insensitive_verdict():
     assert is_correct is True
 
 
+# --- MC answer normalization ---
+
+from expert_build.exam import _normalize_mc_answer
+
+
+def test_normalize_just_letter():
+    assert _normalize_mc_answer("c") == "c"
+
+
+def test_normalize_letter_paren():
+    assert _normalize_mc_answer("c)") == "c"
+
+
+def test_normalize_letter_with_text():
+    assert _normalize_mc_answer("c) AlexNet") == "c"
+
+
+def test_normalize_bold_letter():
+    assert _normalize_mc_answer("**b**") == "b"
+
+
+def test_normalize_answer_prefix():
+    assert _normalize_mc_answer("Answer: b) something") == "b"
+
+
+def test_normalize_parens():
+    assert _normalize_mc_answer("(a)") == "a"
+
+
+def test_normalize_non_mc_passthrough():
+    assert _normalize_mc_answer("some long answer") == "some long answer"
+
+
 # --- agentic mode ---
 
 from expert_build.exam import _run_agentic_question, _execute_tool

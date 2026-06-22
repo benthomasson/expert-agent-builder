@@ -102,11 +102,27 @@ def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
     return "\n".join(beliefs)
 
 
+def _normalize_mc_answer(answer: str) -> str:
+    """Normalize a multiple-choice answer to just the letter.
+
+    Handles: "c", "c)", "c) AlexNet", "**c**", "Answer: b) text", "(a)", etc.
+    """
+    text = answer.strip().lower()
+    text = text.lstrip("*").rstrip("*").strip()
+    if text.startswith("answer:"):
+        text = text[len("answer:"):].strip()
+    text = text.lstrip("*").rstrip("*").strip()
+    text = text.lstrip("(").rstrip(")")
+    if text and text[0] in "abcd" and (len(text) == 1 or text[1] in ").) "):
+        return text[0]
+    return answer.strip()
+
+
 def extract_answer(response: str, model: str = None, prompt: str = None) -> str:
     """Extract answer from JSON LLM response, retrying on parse failure."""
     data = extract_json(response)
     if data and "answer" in data:
-        return str(data["answer"]).strip()
+        return _normalize_mc_answer(str(data["answer"]))
 
     if model and prompt:
         print("    WARN: response not valid JSON, retrying...", file=sys.stderr)
@@ -235,7 +251,7 @@ def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120,
                     q["text"], choices_text, model, db_path,
                     max_turns=max_turns, timeout=timeout,
                 )
-                answer = str(agentic_result.get("answer", "")).strip()
+                answer = _normalize_mc_answer(str(agentic_result.get("answer", "")))
                 response = agentic_result.get("explanation", "")
             except Exception as e:
                 print(f"  {q['id']}: ERROR - {e}")
