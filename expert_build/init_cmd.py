@@ -38,6 +38,37 @@ def cmd_init(args):
     else:
         print(f"{REASONS_DB} already exists, skipping reasons init")
 
+    # Create .gitignore
+    gitignore = cwd / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(
+            "reasons.db\n"
+            "rag_fts.db\n"
+        )
+        print("Created .gitignore")
+    else:
+        print(".gitignore already exists, skipping")
+
+    # Create example questions file
+    example_q = cwd / "questions" / "example.md"
+    if not example_q.exists():
+        example_q.write_text(
+            f"# Example Questions: {domain}\n"
+            f"\n"
+            f"## Q1: What is the primary purpose of {domain}?\n"
+            f"- a) Option A\n"
+            f"- b) Option B\n"
+            f"- c) Option C\n"
+            f"- d) Option D\n"
+            f"Answer: a\n"
+            f"Objective: Core Concepts\n"
+            f"\n"
+            f"## Q2: Explain how {domain} works.\n"
+            f"Answer: A short expected answer for open-ended questions.\n"
+            f"Objective: Core Concepts\n"
+        )
+        print("Created questions/example.md")
+
     # Generate CLAUDE.md from template
     claude_md = cwd / "CLAUDE.md"
     if not claude_md.exists():
