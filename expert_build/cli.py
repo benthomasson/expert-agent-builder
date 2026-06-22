@@ -112,6 +112,8 @@ def main():
                         help="Recursively search source subdirectories")
     pipe_p.add_argument("--resume", action="store_true",
                         help="Resume from last saved pipeline state")
+    pipe_p.add_argument("--namespace", default=None,
+                        help="Filter derive/review to belief namespace (use '' for non-namespaced)")
 
     # -- derive-review-repair --
     drr_p = sub.add_parser("derive-review-repair",
@@ -124,6 +126,8 @@ def main():
     drr_p.add_argument("--timeout", type=int, default=600,
                        help="LLM timeout in seconds (default: 600)")
     drr_p.add_argument("--domain", help="Domain description for derive context")
+    drr_p.add_argument("--namespace", default=None,
+                       help="Filter to belief namespace (use '' for non-namespaced)")
 
     # -- index-sources --
     idx_p = sub.add_parser("index-sources", help="Build FTS5 chunks database from source documents")

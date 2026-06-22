@@ -171,6 +171,14 @@ def _stage_derive(args, round_label=""):
             print(f"{prefix}No nodes in network", file=sys.stderr)
             break
 
+        ns = getattr(args, "namespace", None)
+        if ns is not None:
+            if ns == "":
+                nodes = {k: v for k, v in nodes.items() if ":" not in k}
+            else:
+                nodes = {k: v for k, v in nodes.items()
+                         if k.startswith(f"{ns}:")}
+
         prompt, stats = build_prompt(nodes, domain=args.domain)
         print(f"{prefix}  Network: {stats['total_in']} IN, "
               f"{stats['total_derived']} derived, depth {stats['max_depth']}",
@@ -213,9 +221,11 @@ def _stage_review(args, round_label=""):
     prefix = f"[{round_label}] " if round_label else ""
     print(f"{prefix}Reviewing beliefs...", file=sys.stderr)
 
+    ns = getattr(args, "namespace", None)
     result = review_beliefs(
         model=args.model,
         timeout=args.timeout,
+        namespace=ns,
         db_path=REASONS_DB,
     )
 
@@ -430,11 +440,16 @@ def cmd_derive_review_repair(args):
         sys.exit(1)
 
     rounds = getattr(args, "rounds", 3)
+    ns = getattr(args, "namespace", None)
     print(f"=== Derive-Review-Repair ===", file=sys.stderr)
     print(f"Model: {args.model}", file=sys.stderr)
     print(f"Max rounds: {rounds}", file=sys.stderr)
-    print(f"Max derive rounds per cycle: {args.max_derive_rounds}\n",
+    print(f"Max derive rounds per cycle: {args.max_derive_rounds}",
           file=sys.stderr)
+    if ns is not None:
+        label = "non-namespaced" if ns == "" else f"{ns}:*"
+        print(f"Namespace filter: {label}", file=sys.stderr)
+    print(file=sys.stderr)
 
     summary = _run_convergence_loop(args, rounds)
 
