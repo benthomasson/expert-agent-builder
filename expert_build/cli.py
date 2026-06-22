@@ -91,6 +91,8 @@ def main():
                         help="Save results to file (markdown)")
     exam_p.add_argument("--no-judge", action="store_true",
                         help="Disable LLM judge for open-ended questions (use string matching)")
+    exam_p.add_argument("--no-beliefs", action="store_true",
+                        help="Run without belief context (control condition)")
 
     # -- pipeline --
     pipe_p = sub.add_parser("pipeline", help="Run end-to-end EEM construction pipeline")

@@ -175,8 +175,11 @@ def cmd_exam(args):
     if args.limit:
         questions = questions[:args.limit]
 
-    db_path = str(args.beliefs_file)
-    beliefs_context = load_beliefs_for_context(db_path=db_path)
+    if getattr(args, "no_beliefs", False):
+        beliefs_context = "(No beliefs provided — control condition)"
+    else:
+        db_path = str(args.beliefs_file)
+        beliefs_context = load_beliefs_for_context(db_path=db_path)
 
     print(f"=== Exam: {q_path.name} ===")
     print(f"Questions: {len(questions)}")
