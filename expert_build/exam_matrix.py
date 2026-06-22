@@ -126,7 +126,6 @@ def cmd_exam_matrix(args):
 
     db_path = str(args.beliefs_file)
     beliefs_context = load_beliefs_for_context(db_path=db_path)
-    control_context = "(No beliefs provided — control condition)"
 
     belief_count = None
     try:
@@ -143,12 +142,13 @@ def cmd_exam_matrix(args):
     include_agentic = getattr(args, "agentic", False)
     max_turns = getattr(args, "max_turns", 5)
 
+    # (name, beliefs_context, is_agentic, is_control)
     conditions = [
-        ("beliefs", beliefs_context, False),
-        ("control", control_context, False),
+        ("beliefs", beliefs_context, False, False),
+        ("control", "", False, True),
     ]
     if include_agentic:
-        conditions.append(("agentic", "", True))
+        conditions.append(("agentic", "", True, False))
 
     all_results = {}
     total_runs = len(models) * len(conditions)
@@ -161,7 +161,7 @@ def cmd_exam_matrix(args):
 
     run_num = 0
     for model in models:
-        for condition, context, is_agentic in conditions:
+        for condition, context, is_agentic, is_control in conditions:
             run_num += 1
             label = f"[{run_num}/{total_runs}] {model} ({condition})"
             print(f"\n{'=' * 50}")
@@ -171,8 +171,8 @@ def cmd_exam_matrix(args):
             result = run_exam(
                 questions, context, model,
                 no_judge=no_judge, timeout=timeout,
-                agentic=is_agentic, db_path=db_path,
-                max_turns=max_turns,
+                agentic=is_agentic, control=is_control,
+                db_path=db_path, max_turns=max_turns,
             )
             all_results[(model, condition)] = result
 

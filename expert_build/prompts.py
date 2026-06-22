@@ -102,6 +102,17 @@ Respond with ONLY this JSON (no other text):
 {{"answer": "<letter or short answer>", "explanation": "<one paragraph>"}}
 """
 
+EXAM_ANSWER_CONTROL = """\
+You are a domain expert answering an exam question. Use your own knowledge \
+to answer as accurately as possible.
+
+Question: {question}
+{choices}
+
+Respond with ONLY this JSON (no other text):
+{{"answer": "<letter or short answer>", "explanation": "<one paragraph>"}}
+"""
+
 EXAM_ANSWER_AGENTIC = """\
 You are a domain expert answering an exam question. You have access to a \
 belief database that you can search before answering.

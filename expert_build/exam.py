@@ -7,7 +7,7 @@ from pathlib import Path
 from reasons_lib.api import add_node, add_nogood, list_nodes
 
 from .llm import check_model_available, extract_json, invoke_sync, RETRY_JSON
-from .prompts import EXAM_ANSWER, EXAM_ANSWER_AGENTIC, EXAM_JUDGE
+from .prompts import EXAM_ANSWER, EXAM_ANSWER_AGENTIC, EXAM_ANSWER_CONTROL, EXAM_JUDGE
 
 REASONS_DB = "reasons.db"
 
@@ -214,7 +214,7 @@ def _run_agentic_question(question, choices_text, model, db_path,
 
 
 def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120,
-             agentic=False, db_path="reasons.db", max_turns=5):
+             agentic=False, control=False, db_path="reasons.db", max_turns=5):
     """Run exam questions and return results.
 
     Returns: {"correct": int, "total": int, "results": [...],
@@ -242,11 +242,17 @@ def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120,
                 results.append({"question": q, "status": "ERROR", "error": str(e)})
                 continue
         else:
-            prompt = EXAM_ANSWER.format(
-                beliefs=beliefs_context,
-                question=q["text"],
-                choices=choices_text,
-            )
+            if control:
+                prompt = EXAM_ANSWER_CONTROL.format(
+                    question=q["text"],
+                    choices=choices_text,
+                )
+            else:
+                prompt = EXAM_ANSWER.format(
+                    beliefs=beliefs_context,
+                    question=q["text"],
+                    choices=choices_text,
+                )
 
             try:
                 response = invoke_sync(prompt, model=model, timeout=timeout)
@@ -338,16 +344,17 @@ def cmd_exam(args):
         questions = questions[:args.limit]
 
     is_agentic = getattr(args, "agentic", False)
+    is_control = getattr(args, "no_beliefs", False)
     db_path = str(args.beliefs_file)
 
     if is_agentic:
-        beliefs_context = "(Using agentic mode — beliefs accessed via tools)"
-    elif getattr(args, "no_beliefs", False):
-        beliefs_context = "(No beliefs provided — control condition)"
+        beliefs_context = ""
+    elif is_control:
+        beliefs_context = ""
     else:
         beliefs_context = load_beliefs_for_context(db_path=db_path)
 
-    mode = "agentic" if is_agentic else "one-shot"
+    mode = "agentic" if is_agentic else ("control" if is_control else "one-shot")
     print(f"=== Exam: {q_path.name} ===")
     print(f"Questions: {len(questions)}")
     print(f"Model: {args.model}")
@@ -356,7 +363,7 @@ def cmd_exam(args):
     result = run_exam(
         questions, beliefs_context, args.model,
         no_judge=getattr(args, "no_judge", False),
-        agentic=is_agentic, db_path=db_path,
+        agentic=is_agentic, control=is_control, db_path=db_path,
         max_turns=getattr(args, "max_turns", 5),
     )
 
