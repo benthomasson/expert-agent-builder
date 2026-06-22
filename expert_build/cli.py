@@ -94,6 +94,21 @@ def main():
     exam_p.add_argument("--no-beliefs", action="store_true",
                         help="Run without belief context (control condition)")
 
+    # -- exam-matrix --
+    em_p = sub.add_parser("exam-matrix",
+                          help="Run exam across models × beliefs/control")
+    em_p.add_argument("questions_file", help="Path to practice questions")
+    em_p.add_argument("--models", default="claude:opus,claude:sonnet,claude:haiku",
+                      help="Comma-separated models (default: claude:opus,claude:sonnet,claude:haiku)")
+    em_p.add_argument("--output-dir", default="results",
+                      help="Output directory (default: results)")
+    em_p.add_argument("--beliefs-file", type=Path, default=Path("reasons.db"))
+    em_p.add_argument("--limit", type=int, help="Max questions to process")
+    em_p.add_argument("--no-judge", action="store_true",
+                      help="Disable LLM judge for open-ended questions")
+    em_p.add_argument("--timeout", type=int, default=120,
+                      help="LLM timeout per question in seconds (default: 120)")
+
     # -- pipeline --
     pipe_p = sub.add_parser("pipeline", help="Run end-to-end EEM construction pipeline")
     pipe_p.add_argument("--pdf", action="append", help="PDF files to chunk (repeatable)")
@@ -167,6 +182,7 @@ def main():
         "accept-beliefs": lambda a: _lazy("propose", "cmd_accept_beliefs")(a),
         "cert-coverage": lambda a: _lazy("coverage", "cmd_cert_coverage")(a),
         "exam": lambda a: _lazy("exam", "cmd_exam")(a),
+        "exam-matrix": lambda a: _lazy("exam_matrix", "cmd_exam_matrix")(a),
         "index-sources": lambda a: _lazy("index_sources", "cmd_index_sources")(a),
         "pipeline": lambda a: _lazy("pipeline", "cmd_pipeline")(a),
         "derive-review-repair": lambda a: _lazy("pipeline", "cmd_derive_review_repair")(a),

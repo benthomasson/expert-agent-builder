@@ -155,6 +155,96 @@ def judge_answer(question: str, expected: str, got: str, model: str) -> tuple[bo
     return False, "no verdict"
 
 
+def run_exam(questions, beliefs_context, model, no_judge=False, timeout=120):
+    """Run exam questions and return results.
+
+    Returns: {"correct": int, "total": int, "results": [...],
+              "wrong": [...], "obj_scores": {...}}
+    """
+    correct = 0
+    wrong = []
+    results = []
+
+    for q in questions:
+        choices_text = ""
+        if q["choices"]:
+            choices_text = "\n".join(f"  {k}) {v}" for k, v in sorted(q["choices"].items()))
+
+        prompt = EXAM_ANSWER.format(
+            beliefs=beliefs_context,
+            question=q["text"],
+            choices=choices_text,
+        )
+
+        try:
+            response = invoke_sync(prompt, model=model, timeout=timeout)
+        except Exception as e:
+            print(f"  {q['id']}: ERROR - {e}")
+            results.append({"question": q, "status": "ERROR", "error": str(e)})
+            continue
+
+        answer = extract_answer(response, model=model, prompt=prompt)
+        expected = q["correct"].strip().lower()
+
+        if q["choices"] or len(expected) == 1:
+            is_correct = answer.lower() == expected
+            judge_note = ""
+        elif not no_judge:
+            is_correct, judge_note = judge_answer(
+                q["text"], q["correct"], response, model,
+            )
+        else:
+            is_correct = expected in answer.lower() or answer.lower() in expected
+            judge_note = ""
+
+        if is_correct:
+            correct += 1
+            print(f"  {q['id']}: CORRECT")
+            results.append({"question": q, "status": "CORRECT", "got": answer, "response": response, "judge": judge_note})
+        else:
+            wrong.append({
+                "question": q,
+                "got": answer,
+                "expected": q["correct"],
+                "response": response,
+                "judge": judge_note,
+            })
+            results.append({"question": q, "status": "WRONG", "got": answer, "expected": q["correct"], "response": response, "judge": judge_note})
+            print(f"  {q['id']}: WRONG (expected: {q['correct']}, got: {answer})")
+            if judge_note:
+                print(f"    Judge: {judge_note}")
+
+    total = len(questions)
+    obj_scores: dict[str, dict] = {}
+    for q in questions:
+        obj = q.get("objective", "general")
+        if obj not in obj_scores:
+            obj_scores[obj] = {"correct": 0, "total": 0}
+        obj_scores[obj]["total"] += 1
+    for q in questions:
+        obj = q.get("objective", "general")
+        if not any(w["question"]["id"] == q["id"] for w in wrong):
+            obj_scores[obj]["correct"] += 1
+
+    return {
+        "correct": correct,
+        "total": total,
+        "results": results,
+        "wrong": wrong,
+        "obj_scores": obj_scores,
+    }
+
+
+def write_exam_results(run_result, output_path, model, questions_file):
+    """Write per-run exam results to a markdown file."""
+    _write_results(
+        output_path, questions_file, model,
+        [r["question"] for r in run_result["results"]],
+        run_result["results"], run_result["wrong"],
+        run_result["obj_scores"], run_result["correct"], run_result["total"],
+    )
+
+
 def cmd_exam(args):
     """Run practice questions through LLM, discover nogoods."""
     q_path = Path(args.questions_file)
@@ -185,82 +275,22 @@ def cmd_exam(args):
     print(f"Questions: {len(questions)}")
     print(f"Model: {args.model}\n")
 
-    correct = 0
-    wrong = []
-    results = []  # Per-question results for output file
+    result = run_exam(
+        questions, beliefs_context, args.model,
+        no_judge=getattr(args, "no_judge", False),
+    )
 
-    for q in questions:
-        # Format choices
-        choices_text = ""
-        if q["choices"]:
-            choices_text = "\n".join(f"  {k}) {v}" for k, v in sorted(q["choices"].items()))
+    correct = result["correct"]
+    total = result["total"]
+    wrong = result["wrong"]
+    obj_scores = result["obj_scores"]
 
-        prompt = EXAM_ANSWER.format(
-            beliefs=beliefs_context,
-            question=q["text"],
-            choices=choices_text,
-        )
-
-        try:
-            response = invoke_sync(prompt, model=args.model, timeout=120)
-        except Exception as e:
-            print(f"  {q['id']}: ERROR - {e}")
-            results.append({"question": q, "status": "ERROR", "error": str(e)})
-            continue
-
-        answer = extract_answer(response, model=args.model, prompt=prompt)
-        expected = q["correct"].strip().lower()
-        use_judge = not getattr(args, 'no_judge', False)
-
-        # Score: MC uses exact match, open-ended uses LLM judge
-        if q["choices"] or len(expected) == 1:
-            is_correct = answer.lower() == expected
-            judge_note = ""
-        elif use_judge:
-            is_correct, judge_note = judge_answer(
-                q["text"], q["correct"], response, args.model,
-            )
-        else:
-            is_correct = expected in answer.lower() or answer.lower() in expected
-            judge_note = ""
-
-        if is_correct:
-            correct += 1
-            print(f"  {q['id']}: CORRECT")
-            results.append({"question": q, "status": "CORRECT", "got": answer, "response": response, "judge": judge_note})
-        else:
-            wrong.append({
-                "question": q,
-                "got": answer,
-                "expected": q["correct"],
-                "response": response,
-                "judge": judge_note,
-            })
-            results.append({"question": q, "status": "WRONG", "got": answer, "expected": q["correct"], "response": response, "judge": judge_note})
-            print(f"  {q['id']}: WRONG (expected: {q['correct']}, got: {answer})")
-            if judge_note:
-                print(f"    Judge: {judge_note}")
-
-    # Summary
-    total = len(questions)
     pct = 100 * correct // total if total else 0
     print(f"\n=== Results ===")
     print(f"Score: {correct}/{total} ({pct}%)")
 
-    # Gaps by objective
-    obj_scores: dict[str, dict] = {}
-    for q in questions:
-        obj = q.get("objective", "general")
-        if obj not in obj_scores:
-            obj_scores[obj] = {"correct": 0, "total": 0}
-        obj_scores[obj]["total"] += 1
-
-    for q in questions:
-        obj = q.get("objective", "general")
-        if not any(w["question"]["id"] == q["id"] for w in wrong):
-            obj_scores[obj]["correct"] += 1
-
     if wrong:
+        db_path = str(args.beliefs_file) if not getattr(args, "no_beliefs", False) else REASONS_DB
         print(f"\nWRONG ANSWERS ({len(wrong)}):\n")
         for w in wrong:
             q = w["question"]
@@ -270,7 +300,6 @@ def cmd_exam(args):
             if q["objective"]:
                 print(f"    Objective: {q['objective']}")
 
-            # Record exam failure as a node for tracking
             nogood_id = f"exam-fail-{q['id'].lower()}"
             description = f"Exam {q['id']}: expected '{w['expected']}' but agent answered '{w['got']}' for: {q['text']}"
             resolution = f"Review and update beliefs about: {q['objective'] or q['text']}"
@@ -291,10 +320,9 @@ def cmd_exam(args):
             weak = " *** WEAK AREA" if pct < 50 else ""
             print(f"  {obj}: {scores['correct']}/{scores['total']} ({pct}%){weak}")
 
-    # Write output file if requested
     output_path = getattr(args, "output", None)
     if output_path:
-        _write_results(output_path, q_path, args.model, questions, results, wrong, obj_scores, correct, total)
+        write_exam_results(result, output_path, args.model, q_path)
         print(f"\nResults saved to {output_path}")
 
 
