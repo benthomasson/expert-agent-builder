@@ -14,6 +14,31 @@ MODEL_COMMANDS: dict[str, list[str]] = {
     "gemini": ["gemini", "--skip-trust", "-o", "json", "-p", ""],
 }
 
+
+def resolve_model_cmd(model: str) -> list[str]:
+    """Resolve a model name to a CLI command list.
+
+    Supports 'claude', 'gemini', 'claude:<variant>' (e.g. 'claude:opus'),
+    'gemini:<model>' (e.g. 'gemini:gemini-2.5-flash'),
+    and 'ollama:<model>' (e.g. 'ollama:gemma3:4b').
+    """
+    if model in MODEL_COMMANDS:
+        return MODEL_COMMANDS[model]
+    if model.startswith("claude:"):
+        submodel = model.split(":", 1)[1]
+        return ["claude", "-p", "--model", submodel, "--output-format", "json"]
+    if model.startswith("gemini:"):
+        submodel = model.split(":", 1)[1]
+        return ["gemini", "--skip-trust", "-m", submodel, "-o", "json", "-p", ""]
+    if model.startswith("ollama:"):
+        ollama_model = model.split(":", 1)[1]
+        return ["ollama", "run", ollama_model]
+    available = (
+        list(MODEL_COMMANDS)
+        + ["claude:<model>", "gemini:<model>", "ollama:<model>"]
+    )
+    raise ValueError(f"Unknown model: {model}. Available: {available}")
+
 DEFAULT_TIMEOUT = 300
 
 _cost_tracker = {
@@ -108,10 +133,11 @@ def _parse_cli_json(output: str, model: str) -> str:
 
 def check_model_available(model: str) -> bool:
     """Check if a model's CLI is available."""
-    if model not in MODEL_COMMANDS:
+    try:
+        cmd = resolve_model_cmd(model)
+    except ValueError:
         return False
-    cmd = MODEL_COMMANDS[model][0]
-    return shutil.which(cmd) is not None
+    return shutil.which(cmd[0]) is not None
 
 
 async def invoke(prompt: str, model: str = "claude", timeout: int = DEFAULT_TIMEOUT) -> str:
@@ -120,10 +146,7 @@ async def invoke(prompt: str, model: str = "claude", timeout: int = DEFAULT_TIME
     Uses --output-format json to capture token/cost data.
     Accumulated stats available via get_cost_summary().
     """
-    if model not in MODEL_COMMANDS:
-        raise ValueError(f"Unknown model: {model}. Available: {list(MODEL_COMMANDS.keys())}")
-
-    cmd = MODEL_COMMANDS[model]
+    cmd = resolve_model_cmd(model)
 
     # Remove CLAUDECODE env var to allow nested claude invocation
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
