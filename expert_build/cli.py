@@ -97,6 +97,8 @@ def main():
                         help="Use tool-calling mode (search beliefs per question)")
     exam_p.add_argument("--max-turns", type=int, default=5,
                         help="Max tool-calling turns per question in agentic mode (default: 5)")
+    exam_p.add_argument("--max-depth", type=int, default=None,
+                        help="Only include beliefs up to this derivation depth (e.g. 0=premises, 3=depth 0-3)")
 
     # -- exam-matrix --
     em_p = sub.add_parser("exam-matrix",
@@ -116,6 +118,8 @@ def main():
                       help="Include agentic mode (tool-calling) as third condition")
     em_p.add_argument("--max-turns", type=int, default=5,
                       help="Max tool-calling turns per question in agentic mode (default: 5)")
+    em_p.add_argument("--max-depth", type=int, default=None,
+                      help="Only include beliefs up to this derivation depth (e.g. 0=premises, 3=depth 0-3)")
 
     # -- pipeline --
     pipe_p = sub.add_parser("pipeline", help="Run end-to-end EEM construction pipeline")

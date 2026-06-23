@@ -85,13 +85,14 @@ def parse_questions(filepath: Path) -> list[dict]:
     return questions
 
 
-def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
+def load_beliefs_for_context(db_path: str = REASONS_DB,
+                             max_depth: int | None = None) -> str:
     """Load IN beliefs from reasons database and format as context string."""
     if not Path(db_path).exists():
         return "(No reasons database found)"
 
     try:
-        result = list_nodes(status="IN", db_path=db_path)
+        result = list_nodes(status="IN", max_depth=max_depth, db_path=db_path)
         beliefs = [f"- {n['id']}: {n['text']}" for n in result["nodes"]]
     except Exception:
         return "(Error reading reasons database)"
@@ -99,7 +100,8 @@ def load_beliefs_for_context(db_path: str = REASONS_DB) -> str:
     if not beliefs:
         return "(No IN beliefs found)"
 
-    return "\n".join(beliefs)
+    depth_note = f" (depth 0-{max_depth})" if max_depth is not None else ""
+    return f"({len(beliefs)} beliefs{depth_note})\n" + "\n".join(beliefs)
 
 
 def _normalize_mc_answer(answer: str) -> str:
@@ -363,12 +365,14 @@ def cmd_exam(args):
     is_control = getattr(args, "no_beliefs", False)
     db_path = str(args.beliefs_file)
 
+    max_depth = getattr(args, "max_depth", None)
+
     if is_agentic:
         beliefs_context = ""
     elif is_control:
         beliefs_context = ""
     else:
-        beliefs_context = load_beliefs_for_context(db_path=db_path)
+        beliefs_context = load_beliefs_for_context(db_path=db_path, max_depth=max_depth)
 
     mode = "agentic" if is_agentic else ("control" if is_control else "one-shot")
     print(f"=== Exam: {q_path.name} ===")

@@ -125,12 +125,13 @@ def cmd_exam_matrix(args):
         questions = questions[:args.limit]
 
     db_path = str(args.beliefs_file)
-    beliefs_context = load_beliefs_for_context(db_path=db_path)
+    max_depth = getattr(args, "max_depth", None)
+    beliefs_context = load_beliefs_for_context(db_path=db_path, max_depth=max_depth)
 
     belief_count = None
     try:
         from reasons_lib.api import list_nodes
-        result = list_nodes(status="IN", db_path=db_path)
+        result = list_nodes(status="IN", max_depth=max_depth, db_path=db_path)
         belief_count = len(result.get("nodes", []))
     except Exception:
         pass
